@@ -1,0 +1,115 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and settings.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "dream": { "type": "string" },
+        "examDate": { "type": "string", "format": "date-time" },
+        "targetHours": { "type": "number" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "focusCoins": { "type": "number" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "Subject": {
+      "title": "Subject",
+      "description": "A study subject created by a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "color": { "type": "string" },
+        "targetMinutes": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "color", "targetMinutes"]
+    },
+    "Topic": {
+      "title": "Topic",
+      "description": "A topic or chapter within a subject.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "title": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "In Progress", "Completed"] },
+        "timeSpent": { "type": "number" },
+        "targetMinutes": { "type": "number" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "subjectId", "title", "status", "timeSpent", "targetMinutes"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A scheduled task in the planner.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "subject": { "type": "string" },
+        "duration": { "type": "number" },
+        "time": { "type": "string" },
+        "completed": { "type": "boolean" },
+        "date": { "type": "string" },
+        "type": { "type": "string", "enum": ["study", "practice", "test"] },
+        "color": { "type": "string" }
+      },
+      "required": ["userId", "title", "subject", "duration", "time", "completed", "date", "type", "color"]
+    },
+    "JournalEntry": {
+      "title": "JournalEntry",
+      "description": "A journal entry.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "text": { "type": "string" },
+        "mood": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "text", "mood", "date"]
+    },
+    "FocusHistory": {
+      "title": "FocusHistory",
+      "description": "Daily focus time history.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "date": { "type": "string" },
+        "minutes": { "type": "number" }
+      },
+      "required": ["userId", "date", "minutes"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles."
+    },
+    "/users/{userId}/subjects/{subjectId}": {
+      "schema": { "$ref": "#/entities/Subject" },
+      "description": "User's subjects."
+    },
+    "/users/{userId}/topics/{topicId}": {
+      "schema": { "$ref": "#/entities/Topic" },
+      "description": "User's topics."
+    },
+    "/users/{userId}/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/Task" },
+      "description": "User's tasks."
+    },
+    "/users/{userId}/journal/{entryId}": {
+      "schema": { "$ref": "#/entities/JournalEntry" },
+      "description": "User's journal entries."
+    },
+    "/users/{userId}/focusHistory/{date}": {
+      "schema": { "$ref": "#/entities/FocusHistory" },
+      "description": "User's daily focus history."
+    }
+  }
+}

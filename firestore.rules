@@ -1,0 +1,154 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        (request.auth.token.email == "abcdmt2p2@gmail.com" && request.auth.token.email_verified == true));
+    }
+    
+    function hasOnlyAllowedFields(allowedFields) {
+      return request.resource.data.keys().hasOnly(allowedFields);
+    }
+    
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'name', 'email', 'photoURL', 'dream', 'examDate', 'targetHours', 'role', 'focusCoins', 'minimumDailyMinutes', 'notificationsEnabled', 'studySlots', 'treesGrown', 'inspirationImage', 'totalFocusMinutes']) &&
+             data.uid is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             (!('email' in data) || (data.email is string && (data.email == '' || data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$")))) &&
+             data.role in ['user', 'admin'] &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 2000000)) &&
+             (!('dream' in data) || (data.dream is string && data.dream.size() < 500)) &&
+             (!('examDate' in data) || data.examDate is string) &&
+             (!('targetHours' in data) || (data.targetHours is number && data.targetHours >= 0)) &&
+             (!('focusCoins' in data) || (data.focusCoins is number && data.focusCoins >= 0)) &&
+             (!('minimumDailyMinutes' in data) || (data.minimumDailyMinutes is number && data.minimumDailyMinutes >= 0)) &&
+             (!('notificationsEnabled' in data) || data.notificationsEnabled is bool) &&
+             (!('studySlots' in data) || data.studySlots is list) &&
+             (!('treesGrown' in data) || (data.treesGrown is number && data.treesGrown >= 0)) &&
+             (!('inspirationImage' in data) || (data.inspirationImage is string && data.inspirationImage.size() < 2000000)) &&
+             (!('totalFocusMinutes' in data) || (data.totalFocusMinutes is number && data.totalFocusMinutes >= 0));
+    }
+
+    function isValidSubject(data) {
+      return hasOnlyAllowedFields(['userId', 'name', 'color', 'targetMinutes', 'createdAt', 'timeSpent']) &&
+             data.userId is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.color is string && data.color.size() > 0 && data.color.size() < 50 &&
+             data.targetMinutes is number && data.targetMinutes >= 0 &&
+             (!('createdAt' in data) || data.createdAt is string) &&
+             (!('timeSpent' in data) || (data.timeSpent is number && data.timeSpent >= 0));
+    }
+
+    function isValidTopic(data) {
+      return hasOnlyAllowedFields(['userId', 'subjectId', 'title', 'status', 'timeSpent', 'targetMinutes', 'lastUpdated']) &&
+             data.userId is string &&
+             data.subjectId is string && data.subjectId.size() > 0 && data.subjectId.size() < 100 &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.status in ['Pending', 'In Progress', 'Completed'] &&
+             data.timeSpent is number && data.timeSpent >= 0 &&
+             data.targetMinutes is number && data.targetMinutes >= 0 &&
+             (!('lastUpdated' in data) || data.lastUpdated is string);
+    }
+
+    function isValidTask(data) {
+      return hasOnlyAllowedFields(['userId', 'title', 'subject', 'duration', 'time', 'completed', 'date', 'type', 'color', 'priority']) &&
+             data.userId is string &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.subject is string && data.subject.size() < 100 &&
+             data.duration is number && data.duration >= 0 &&
+             data.time is string && data.time.size() < 20 &&
+             data.completed is bool &&
+             data.date is string && data.date.size() > 0 && data.date.size() < 30 &&
+             data.type in ['study', 'practice', 'test'] &&
+             data.color is string && data.color.size() > 0 && data.color.size() < 50 &&
+             (!('priority' in data) || data.priority in ['q1', 'q2', 'q3', 'q4']);
+    }
+
+    function isValidJournalEntry(data) {
+      return hasOnlyAllowedFields(['userId', 'text', 'mood', 'date']) &&
+             data.userId is string &&
+             data.text is string && data.text.size() > 0 && data.text.size() < 10000 &&
+             data.mood is string && data.mood.size() > 0 && data.mood.size() < 50 &&
+             data.date is string && data.date.size() > 0 && data.date.size() < 30;
+    }
+
+    function isValidFocusHistory(data) {
+      return hasOnlyAllowedFields(['userId', 'date', 'minutes']) &&
+             data.userId is string &&
+             data.date is string && data.date.size() > 0 && data.date.size() < 30 &&
+             data.minutes is number && data.minutes >= 0;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /live_students/{studentId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && request.auth.uid == studentId;
+      allow delete: if isAuthenticated() && request.auth.uid == studentId;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+                    ((request.resource.data.role == 'user') || isAdmin());
+      allow update: if isValidUser(request.resource.data) && 
+                    (
+                      (isOwner(userId) && request.resource.data.role == resource.data.role) || 
+                      (isAdmin() && (userId != request.auth.uid || request.resource.data.role == resource.data.role))
+                    );
+      allow delete: if isAdmin();
+
+      match /subjects/{subjectId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidSubject(request.resource.data) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidSubject(request.resource.data) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      match /topics/{topicId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidTopic(request.resource.data) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidTopic(request.resource.data) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      match /tasks/{taskId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidTask(request.resource.data) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidTask(request.resource.data) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      match /journal/{entryId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidJournalEntry(request.resource.data) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidJournalEntry(request.resource.data) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      match /focusHistory/{date} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidFocusHistory(request.resource.data) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidFocusHistory(request.resource.data) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+    }
+  }
+}
