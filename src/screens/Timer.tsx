@@ -77,35 +77,33 @@ const TreeAnimation = ({ progress, state }: { progress: number, state: 'growing'
 export default function Timer() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, addFocusTime, showToast, subjects, topics, tasks, addTopicTime, addSubjectTime, updateUserCoins, addTreeGrown } = useStore();
+  const { 
+    user, addFocusTime, showToast, subjects, topics, tasks, 
+    addTopicTime, addSubjectTime, updateUserCoins, addTreeGrown,
+    timerState, setTimerState
+  } = useStore();
   
-  const [mode, setMode] = useState<'pomodoro' | 'stopwatch'>('pomodoro');
-  const [focusDuration, setFocusDuration] = useState(25);
-  const [breakDuration, setBreakDuration] = useState(5);
-  
-  const [timeLeft, setTimeLeft] = useState(() => {
-    if (location.state?.preset) {
-      return location.state.preset * 60;
+  const {
+    mode, focusDuration, breakDuration, timeLeft, initialTime,
+    isRunning, sessionType, selectedSubjectId, selectedTopicId,
+    selectedTaskId, treeState, treesGrownSession, targetEndTime
+  } = timerState;
+
+  // Sync location state preset on mount if not running
+  useEffect(() => {
+    if (location.state?.preset && !isRunning) {
+      const presetSeconds = location.state.preset * 60;
+      setTimerState(prev => ({
+        ...prev,
+        focusDuration: location.state.preset,
+        timeLeft: presetSeconds,
+        initialTime: presetSeconds
+      }));
     }
-    return focusDuration * 60;
-  });
-  const [initialTime, setInitialTime] = useState(() => {
-    if (location.state?.preset) {
-      return location.state.preset * 60;
-    }
-    return focusDuration * 60;
-  });
-  
-  const [isRunning, setIsRunning] = useState(false);
-  const [sessionType, setSessionType] = useState<'focus' | 'break'>('focus');
-  
-  const [selectedSubjectId, setSelectedSubjectId] = useState(subjects[0]?.id || '');
-  const [selectedTopicId, setSelectedTopicId] = useState('');
+  }, [location.state, isRunning, setTimerState]);
   
   const [showSubjectDropdown, setShowSubjectDropdown] = useState(false);
   const [showTopicDropdown, setShowTopicDropdown] = useState(false);
-  
-  const [selectedTaskId, setSelectedTaskId] = useState('');
   const [showTaskDropdown, setShowTaskDropdown] = useState(false);
   const [showLinkPrompt, setShowLinkPrompt] = useState(false);
   
@@ -122,29 +120,20 @@ export default function Timer() {
   ];
   const [selectedSound, setSelectedSound] = useState(sounds[0]);
 
-  const [treeState, setTreeState] = useState<'growing' | 'withered'>('growing');
-  const [treesGrownSession, setTreesGrownSession] = useState(0);
-
   const secondsAccumulator = useRef(0);
 
   // Visibility API for Tree Withering
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden && isRunning && sessionType === 'focus') {
-        setTreeState('withered');
+        setTimerState(prev => ({ ...prev, treeState: 'withered' }));
         showToast("You left the app! Your tree withered.", "error");
-        // Optionally pause the timer
-        // setIsRunning(false);
-      } else if (!document.hidden && isRunning && sessionType === 'focus') {
-        // If they come back, maybe it stays withered for this session, 
-        // but let's let it recover if they continue focusing for a bit.
-        // For now, it stays withered until next session.
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isRunning, sessionType, showToast]);
+  }, [isRunning, sessionType, showToast, setTimerState]);
 
   // Sync with live_students collection
   useEffect(() => {
@@ -170,77 +159,121 @@ export default function Timer() {
       deleteDoc(liveRef).catch(console.error);
     }
     
-    return () => {
-      deleteDoc(liveRef).catch(console.error);
-    };
+    // We don't want to delete the doc on unmount if the timer is still running globally
+    // But we need to handle cleanup if they log out or something.
+    // For now, let's keep it simple: if they leave the page, the live room might still show them if timer is running.
+    // Actually, Live Room is supposed to show people *currently* focusing. If timer runs in background, they are focusing.
   }, [isRunning, sessionType, user, selectedSubjectId, selectedTopicId, subjects, topics]);
 
   // Update selected topic when subject changes
   useEffect(() => {
     const subjectTopics = topics.filter(t => t.subjectId === selectedSubjectId);
     if (subjectTopics.length > 0 && !subjectTopics.find(t => t.id === selectedTopicId)) {
-      setSelectedTopicId(subjectTopics[0].id);
+      setTimerState(prev => ({ ...prev, selectedTopicId: subjectTopics[0].id }));
     } else if (subjectTopics.length === 0) {
-      setSelectedTopicId('');
+      setTimerState(prev => ({ ...prev, selectedTopicId: '' }));
     }
-  }, [selectedSubjectId, topics]);
+  }, [selectedSubjectId, topics, selectedTopicId, setTimerState]);
 
+  // Main Timer Logic (Timestamp based)
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isRunning && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-        
+    let animationFrameId: number;
+    let lastTick = Date.now();
+
+    const tick = () => {
+      if (!isRunning || !targetEndTime) return;
+
+      const now = Date.now();
+      const remaining = Math.max(0, Math.ceil((targetEndTime - now) / 1000));
+
+      if (remaining !== timeLeft) {
+        setTimerState(prev => ({ ...prev, timeLeft: remaining }));
+
+        // Accumulate focus time
         if (sessionType === 'focus') {
-          secondsAccumulator.current += 1;
-          if (secondsAccumulator.current >= 60) {
-            secondsAccumulator.current = 0;
-            addFocusTime(1);
-            if (selectedSubjectId) {
-              addSubjectTime(selectedSubjectId, 1);
+          const deltaSeconds = Math.floor((now - lastTick) / 1000);
+          if (deltaSeconds > 0) {
+            secondsAccumulator.current += deltaSeconds;
+            lastTick = now;
+
+            if (secondsAccumulator.current >= 60) {
+              const minutesToAdd = Math.floor(secondsAccumulator.current / 60);
+              secondsAccumulator.current %= 60;
+              
+              addFocusTime(minutesToAdd);
+              if (selectedSubjectId) addSubjectTime(selectedSubjectId, minutesToAdd);
+              if (selectedTopicId) addTopicTime(selectedTopicId, minutesToAdd);
             }
-            if (selectedTopicId) {
-              addTopicTime(selectedTopicId, 1);
-            }
-            // If we wanted to track time per task, we could add it here.
           }
         }
-      }, 1000);
-    } else if (timeLeft === 0 && isRunning) {
-      setIsRunning(false);
-      if (sessionType === 'focus') {
-        const taskName = selectedTaskId ? tasks.find(t => t.id === selectedTaskId)?.title : null;
-        showToast(`Session complete! ${taskName ? `Worked on: ${taskName}. ` : ''}+5 Coins. Tree Grown! 🌳`, "success");
-        updateUserCoins(5);
-        if (treeState === 'growing') {
-          setTreesGrownSession(prev => prev + 1);
-          addTreeGrown();
-        }
-        setSessionType('break');
-        setTimeLeft(breakDuration * 60);
-        setInitialTime(breakDuration * 60);
-      } else {
-        showToast("Break over! Time to focus.", "info");
-        setSessionType('focus');
-        setTreeState('growing');
-        setTimeLeft(focusDuration * 60);
-        setInitialTime(focusDuration * 60);
       }
+
+      if (remaining <= 0) {
+        // Timer Finished
+        setTimerState(prev => ({ ...prev, isRunning: false, targetEndTime: null }));
+        
+        if (sessionType === 'focus') {
+          const taskName = selectedTaskId ? tasks.find(t => t.id === selectedTaskId)?.title : null;
+          showToast(`Session complete! ${taskName ? `Worked on: ${taskName}. ` : ''}+5 Coins. Tree Grown! 🌳`, "success");
+          updateUserCoins(5);
+          
+          if (treeState === 'growing') {
+            setTimerState(prev => ({ ...prev, treesGrownSession: prev.treesGrownSession + 1 }));
+            addTreeGrown();
+          }
+          
+          setTimerState(prev => ({
+            ...prev,
+            sessionType: 'break',
+            timeLeft: prev.breakDuration * 60,
+            initialTime: prev.breakDuration * 60
+          }));
+        } else {
+          showToast("Break over! Time to focus.", "info");
+          setTimerState(prev => ({
+            ...prev,
+            sessionType: 'focus',
+            treeState: 'growing',
+            timeLeft: prev.focusDuration * 60,
+            initialTime: prev.focusDuration * 60
+          }));
+        }
+      } else {
+        animationFrameId = requestAnimationFrame(tick);
+      }
+    };
+
+    if (isRunning) {
+      animationFrameId = requestAnimationFrame(tick);
     }
-    return () => clearInterval(interval);
-  }, [isRunning, timeLeft, sessionType, initialTime, addFocusTime, focusDuration, breakDuration, showToast, selectedSubjectId, addSubjectTime, selectedTopicId, addTopicTime, updateUserCoins, addTreeGrown, treeState]);
+
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+  }, [isRunning, targetEndTime, timeLeft, sessionType, addFocusTime, selectedSubjectId, addSubjectTime, selectedTopicId, addTopicTime, showToast, selectedTaskId, tasks, updateUserCoins, treeState, addTreeGrown, setTimerState]);
 
   const toggleTimer = () => {
     if (!isRunning && !selectedSubjectId && !selectedTopicId && !selectedTaskId) {
       setShowLinkPrompt(true);
     } else {
-      setIsRunning(!isRunning);
+      setTimerState(prev => {
+        const newIsRunning = !prev.isRunning;
+        return {
+          ...prev,
+          isRunning: newIsRunning,
+          targetEndTime: newIsRunning ? Date.now() + prev.timeLeft * 1000 : null
+        };
+      });
     }
   };
   
   const resetTimer = () => {
-    setIsRunning(false);
-    setTimeLeft(initialTime);
+    setTimerState(prev => ({
+      ...prev,
+      isRunning: false,
+      targetEndTime: null,
+      timeLeft: prev.initialTime
+    }));
   };
 
   const formatTime = (seconds: number) => {
@@ -255,11 +288,17 @@ export default function Timer() {
     setShowSettings(false);
     if (!isRunning) {
       if (sessionType === 'focus') {
-        setTimeLeft(focusDuration * 60);
-        setInitialTime(focusDuration * 60);
+        setTimerState(prev => ({
+          ...prev,
+          timeLeft: prev.focusDuration * 60,
+          initialTime: prev.focusDuration * 60
+        }));
       } else {
-        setTimeLeft(breakDuration * 60);
-        setInitialTime(breakDuration * 60);
+        setTimerState(prev => ({
+          ...prev,
+          timeLeft: prev.breakDuration * 60,
+          initialTime: prev.breakDuration * 60
+        }));
       }
     }
   };
@@ -274,7 +313,7 @@ export default function Timer() {
         </button>
         <div className="flex bg-surface-container-high rounded-full p-1 border border-outline-variant/20">
           <button 
-            onClick={() => setMode('pomodoro')}
+            onClick={() => setTimerState(prev => ({ ...prev, mode: 'pomodoro' }))}
             className={clsx(
               "px-4 py-1.5 rounded-full font-label text-xs uppercase tracking-widest transition-all",
               mode === 'pomodoro' ? "bg-primary text-on-primary shadow-md" : "text-on-surface-variant hover:text-on-surface"
@@ -283,7 +322,7 @@ export default function Timer() {
             Pomodoro
           </button>
           <button 
-            onClick={() => setMode('stopwatch')}
+            onClick={() => setTimerState(prev => ({ ...prev, mode: 'stopwatch' }))}
             className={clsx(
               "px-4 py-1.5 rounded-full font-label text-xs uppercase tracking-widest transition-all",
               mode === 'stopwatch' ? "bg-primary text-on-primary shadow-md" : "text-on-surface-variant hover:text-on-surface"
@@ -337,7 +376,7 @@ export default function Timer() {
               <div className="absolute top-full mt-2 w-full bg-surface-container-high rounded-xl border border-outline-variant/20 shadow-xl overflow-hidden z-30 max-h-48 overflow-y-auto">
                 <button
                   onClick={() => {
-                    setSelectedTaskId('');
+                    setTimerState(prev => ({ ...prev, selectedTaskId: '' }));
                     setShowTaskDropdown(false);
                   }}
                   className="w-full text-left px-4 py-3 hover:bg-surface-container-highest transition-colors font-label text-sm text-on-surface-variant italic"
@@ -348,11 +387,13 @@ export default function Timer() {
                   <button
                     key={task.id}
                     onClick={() => {
-                      setSelectedTaskId(task.id);
+                      setTimerState(prev => {
+                        const newState = { ...prev, selectedTaskId: task.id };
+                        const subject = subjects.find(s => s.name === task.subject);
+                        if (subject) newState.selectedSubjectId = subject.id;
+                        return newState;
+                      });
                       setShowTaskDropdown(false);
-                      // Auto-select subject if task has one
-                      const subject = subjects.find(s => s.name === task.subject);
-                      if (subject) setSelectedSubjectId(subject.id);
                     }}
                     className="w-full text-left px-4 py-3 hover:bg-surface-container-highest transition-colors font-label text-sm truncate border-t border-outline-variant/10"
                   >
@@ -383,7 +424,7 @@ export default function Timer() {
                     <button
                       key={sub.id}
                       onClick={() => {
-                        setSelectedSubjectId(sub.id);
+                        setTimerState(prev => ({ ...prev, selectedSubjectId: sub.id }));
                         setShowSubjectDropdown(false);
                       }}
                       className="w-full text-left px-4 py-3 hover:bg-surface-container-highest transition-colors font-label text-sm truncate"
@@ -411,7 +452,7 @@ export default function Timer() {
                     <button
                       key={topic.id}
                       onClick={() => {
-                        setSelectedTopicId(topic.id);
+                        setTimerState(prev => ({ ...prev, selectedTopicId: topic.id }));
                         setShowTopicDropdown(false);
                       }}
                       className="w-full text-left px-4 py-3 hover:bg-surface-container-highest transition-colors font-label text-sm truncate"
@@ -486,10 +527,14 @@ export default function Timer() {
             onClick={() => {
               const newType = sessionType === 'focus' ? 'break' : 'focus';
               const newTime = newType === 'focus' ? focusDuration * 60 : breakDuration * 60;
-              setSessionType(newType);
-              setTimeLeft(newTime);
-              setInitialTime(newTime);
-              setIsRunning(false);
+              setTimerState(prev => ({
+                ...prev,
+                sessionType: newType,
+                timeLeft: newTime,
+                initialTime: newTime,
+                isRunning: false,
+                targetEndTime: null
+              }));
             }}
             className="w-14 h-14 rounded-full bg-surface-container-high flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-all active:scale-95 border border-outline-variant/20"
           >
@@ -558,7 +603,7 @@ export default function Timer() {
           <div className="bg-surface-container-high rounded-3xl p-6 w-full max-w-sm border border-outline-variant/20 shadow-2xl">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-syne font-bold text-xl">Link Session?</h3>
-              <button onClick={() => { setShowLinkPrompt(false); setIsRunning(true); }} className="text-on-surface-variant hover:text-on-surface">
+              <button onClick={() => { setShowLinkPrompt(false); setTimerState(prev => ({ ...prev, isRunning: true, targetEndTime: Date.now() + prev.timeLeft * 1000 })); }} className="text-on-surface-variant hover:text-on-surface">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
@@ -579,7 +624,7 @@ export default function Timer() {
               <button 
                 onClick={() => {
                   setShowLinkPrompt(false);
-                  setIsRunning(true);
+                  setTimerState(prev => ({ ...prev, isRunning: true, targetEndTime: Date.now() + prev.timeLeft * 1000 }));
                 }}
                 className="w-full bg-surface-container-highest text-on-surface py-3 rounded-xl font-bold hover:bg-surface-container-highest/80 transition-colors"
               >
@@ -607,7 +652,7 @@ export default function Timer() {
                 <input 
                   type="number" 
                   value={focusDuration}
-                  onChange={(e) => setFocusDuration(parseInt(e.target.value) || 25)}
+                  onChange={(e) => setTimerState(prev => ({ ...prev, focusDuration: parseInt(e.target.value) || 25 }))}
                   className="w-full bg-surface-container-lowest border border-outline-variant/20 rounded-xl px-4 py-3 text-on-surface focus:outline-none focus:border-primary transition-colors"
                 />
               </div>
@@ -616,7 +661,7 @@ export default function Timer() {
                 <input 
                   type="number" 
                   value={breakDuration}
-                  onChange={(e) => setBreakDuration(parseInt(e.target.value) || 5)}
+                  onChange={(e) => setTimerState(prev => ({ ...prev, breakDuration: parseInt(e.target.value) || 5 }))}
                   className="w-full bg-surface-container-lowest border border-outline-variant/20 rounded-xl px-4 py-3 text-on-surface focus:outline-none focus:border-primary transition-colors"
                 />
               </div>

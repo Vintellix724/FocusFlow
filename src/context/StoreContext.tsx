@@ -103,6 +103,25 @@ type StoreContextType = {
   removeToast: (id: string) => void;
   updateUserCoins: (amount: number) => void;
   addTreeGrown: () => void;
+  isOffline: boolean;
+
+  // Global Timer State
+  timerState: {
+    mode: 'pomodoro' | 'stopwatch';
+    focusDuration: number;
+    breakDuration: number;
+    timeLeft: number;
+    initialTime: number;
+    isRunning: boolean;
+    sessionType: 'focus' | 'break';
+    selectedSubjectId: string;
+    selectedTopicId: string;
+    selectedTaskId: string;
+    treeState: 'growing' | 'withered';
+    treesGrownSession: number;
+    targetEndTime: number | null; // For background accuracy
+  };
+  setTimerState: React.Dispatch<React.SetStateAction<StoreContextType['timerState']>>;
 };
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -110,9 +129,27 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [user, setUserState] = useState<User | null>(() => {
     const saved = localStorage.getItem('focusflow_user');
     return saved ? JSON.parse(saved) : null;
+  });
+
+  // Global Timer State
+  const [timerState, setTimerState] = useState<StoreContextType['timerState']>({
+    mode: 'pomodoro',
+    focusDuration: 25,
+    breakDuration: 5,
+    timeLeft: 25 * 60,
+    initialTime: 25 * 60,
+    isRunning: false,
+    sessionType: 'focus',
+    selectedSubjectId: '',
+    selectedTopicId: '',
+    selectedTaskId: '',
+    treeState: 'growing',
+    treesGrownSession: 0,
+    targetEndTime: null,
   });
 
   // Data states
@@ -125,30 +162,47 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Auth Listener
   useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      showToast("Back online! Syncing data...", "success");
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+      showToast("You are offline. Zen Mode activated 📴", "info");
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
     const unsubscribe = onAuthStateChanged(auth, async (fUser) => {
       setFirebaseUser(fUser);
       if (fUser) {
         // Fetch user from Firestore
         const userRef = doc(db, 'users', fUser.uid);
-        const userSnap = await getDoc(userRef);
-        
-        if (userSnap.exists()) {
-          setUserState(userSnap.data() as User);
-        } else {
-          // Create new user in Firestore
-          const newUser: User = {
-            uid: fUser.uid,
-            name: fUser.displayName || 'Student',
-            email: fUser.email || '',
-            photoURL: fUser.photoURL || '',
-            dream: 'Crack the exam',
-            examDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
-            targetHours: 6,
-            role: 'user',
-            focusCoins: 0
-          };
-          await setDoc(userRef, newUser);
-          setUserState(newUser);
+        try {
+          const userSnap = await getDoc(userRef);
+          
+          if (userSnap.exists()) {
+            setUserState(userSnap.data() as User);
+          } else {
+            // Create new user in Firestore
+            const newUser: User = {
+              uid: fUser.uid,
+              name: fUser.displayName || 'Student',
+              email: fUser.email || '',
+              photoURL: fUser.photoURL || '',
+              dream: 'Crack the exam',
+              examDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
+              targetHours: 6,
+              role: 'user',
+              focusCoins: 0
+            };
+            await setDoc(userRef, newUser);
+            setUserState(newUser);
+          }
+        } catch (error) {
+          console.error("Error fetching user data, might be offline", error);
+          // If offline and no cache, we can't do much, but we shouldn't crash
         }
       } else {
         setUserState(null);
@@ -161,7 +215,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       setIsAuthReady(true);
     });
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   // Data Listeners
@@ -445,14 +503,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setFocusTimeToday(newMins);
     setFocusHistory(prev => ({ ...prev, [today]: newMins }));
 
-    // Update Firestore
+    // Update Firestore using setDoc with merge (works perfectly offline without needing getDoc)
     const historyRef = doc(db, `users/${firebaseUser.uid}/focusHistory`, today);
-    const historySnap = await getDoc(historyRef);
-    
-    if (historySnap.exists()) {
-      await updateDoc(historyRef, { minutes: newMins });
-    } else {
-      await setDoc(historyRef, { userId: firebaseUser.uid, date: today, minutes: newMins });
+    try {
+      await setDoc(historyRef, { userId: firebaseUser.uid, date: today, minutes: newMins }, { merge: true });
+    } catch (error) {
+      console.error("Error updating focus history:", error);
     }
 
     // Update total focus minutes on user document
@@ -522,7 +578,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       user, setUser, firebaseUser, isAuthReady, tasks, addTask, toggleTask, deleteTask, editTask,
       subjects, addSubject, deleteSubject, addSubjectTime, topics, addTopic, deleteTopic, toggleTopicStatus, addTopicTime,
       focusTimeToday, focusHistory, currentStreak, bestStreak, addFocusTime, journalEntries, addJournalEntry,
-      toasts, showToast, removeToast, updateUserCoins, addTreeGrown
+      toasts, showToast, removeToast, updateUserCoins, addTreeGrown, isOffline,
+      timerState, setTimerState
     }}>
       {children}
     </StoreContext.Provider>

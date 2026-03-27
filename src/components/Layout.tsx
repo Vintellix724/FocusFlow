@@ -126,7 +126,7 @@ const NotificationManager = () => {
 };
 
 export default function Layout() {
-  const { toasts, removeToast } = useStore();
+  const { toasts, removeToast, isOffline } = useStore();
 
   return (
     <MyErrorBoundary>
@@ -137,6 +137,21 @@ export default function Layout() {
           <Outlet />
         </div>
         <BottomNav />
+
+        {/* Offline Indicator */}
+        <AnimatePresence>
+          {isOffline && (
+            <motion.div
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 50 }}
+              className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[90] bg-surface-container-highest/90 backdrop-blur-md border border-outline-variant/30 px-4 py-2 rounded-full shadow-lg flex items-center gap-2 pointer-events-none"
+            >
+              <span className="material-symbols-outlined text-tertiary text-sm">wifi_off</span>
+              <span className="font-label text-xs uppercase tracking-wider text-on-surface-variant">Zen Mode (Offline)</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Toast Container */}
         <div className="fixed top-20 left-0 right-0 z-[100] flex flex-col items-center gap-2 pointer-events-none px-4">
