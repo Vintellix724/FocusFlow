@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Splash from './screens/Splash';
 import Welcome from './screens/Welcome';
 import Onboarding from './screens/Onboarding';
@@ -13,8 +14,30 @@ import Admin from './screens/Admin';
 import Leaderboard from './screens/Leaderboard';
 import LiveStudyRoom from './screens/LiveStudyRoom';
 import About from './screens/About';
+import YouTubeChannels from './screens/YouTubeChannels';
+import TelegramChannels from './screens/TelegramChannels';
+import StudyApps from './screens/StudyApps';
 import Layout from './components/Layout';
-import { StoreProvider } from './context/StoreContext';
+import { StoreProvider, useStore } from './context/StoreContext';
+
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthReady, firebaseUser } = useStore();
+  const location = useLocation();
+
+  if (!isAuthReady) {
+    return (
+      <div className="min-h-screen bg-surface flex items-center justify-center">
+        <span className="material-symbols-outlined animate-spin text-primary text-4xl">progress_activity</span>
+      </div>
+    );
+  }
+
+  if (!firebaseUser) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return <>{children}</>;
+};
 
 export default function App() {
   return (
@@ -26,7 +49,7 @@ export default function App() {
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/login" element={<Login />} />
           
-          <Route element={<Layout />}>
+          <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="/home" element={<Home />} />
             <Route path="/timer" element={<Timer />} />
             <Route path="/subjects" element={<Subjects />} />
@@ -37,6 +60,9 @@ export default function App() {
             <Route path="/live-study-room" element={<LiveStudyRoom />} />
             <Route path="/about" element={<About />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/youtube-channels" element={<YouTubeChannels />} />
+            <Route path="/telegram-channels" element={<TelegramChannels />} />
+            <Route path="/study-apps" element={<StudyApps />} />
           </Route>
         </Routes>
       </BrowserRouter>

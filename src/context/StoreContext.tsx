@@ -66,6 +66,28 @@ export type JournalEntry = {
   date: string;
 };
 
+export type YouTubeChannel = {
+  id: string;
+  name: string;
+  url: string;
+  createdAt: string;
+};
+
+export type TelegramChannel = {
+  id: string;
+  name: string;
+  url: string;
+  createdAt: string;
+};
+
+export type StudyApp = {
+  id: string;
+  name: string;
+  url: string;
+  icon?: string;
+  createdAt: string;
+};
+
 export type ToastMessage = {
   id: string;
   message: string;
@@ -77,6 +99,8 @@ type StoreContextType = {
   setUser: (user: User) => void;
   firebaseUser: FirebaseUser | null;
   isAuthReady: boolean;
+  theme: 'light' | 'dark';
+  toggleTheme: () => void;
   tasks: Task[];
   addTask: (task: Omit<Task, 'id'>) => void;
   toggleTask: (id: string) => void;
@@ -104,6 +128,18 @@ type StoreContextType = {
   updateUserCoins: (amount: number) => void;
   addTreeGrown: () => void;
   isOffline: boolean;
+
+  youtubeChannels: YouTubeChannel[];
+  addYouTubeChannel: (channel: Omit<YouTubeChannel, 'id' | 'createdAt'>) => void;
+  deleteYouTubeChannel: (id: string) => void;
+
+  telegramChannels: TelegramChannel[];
+  addTelegramChannel: (channel: Omit<TelegramChannel, 'id' | 'createdAt'>) => void;
+  deleteTelegramChannel: (id: string) => void;
+
+  studyApps: StudyApp[];
+  addStudyApp: (app: Omit<StudyApp, 'id' | 'createdAt'>) => void;
+  deleteStudyApp: (id: string) => void;
 
   // Global Timer State
   timerState: {
@@ -135,6 +171,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return saved ? JSON.parse(saved) : null;
   });
 
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const savedTheme = localStorage.getItem('focusflow_theme');
+    if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    root.classList.remove('light', 'dark');
+    root.classList.add(theme);
+    localStorage.setItem('focusflow_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
+
   // Global Timer State
   const [timerState, setTimerState] = useState<StoreContextType['timerState']>({
     mode: 'pomodoro',
@@ -159,6 +212,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [focusHistory, setFocusHistory] = useState<Record<string, number>>({});
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [focusTimeToday, setFocusTimeToday] = useState<number>(0);
+
+  const [youtubeChannels, setYoutubeChannels] = useState<YouTubeChannel[]>([]);
+  const [telegramChannels, setTelegramChannels] = useState<TelegramChannel[]>([]);
+  const [studyApps, setStudyApps] = useState<StudyApp[]>([]);
 
   // Auth Listener
   useEffect(() => {
@@ -283,12 +340,42 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.error("Error fetching journal:", error);
     });
 
+    // Listen to YouTube Channels
+    const youtubeUnsub = onSnapshot(collection(db, `users/${uid}/youtube_channels`), (snapshot) => {
+      const loadedChannels: YouTubeChannel[] = [];
+      snapshot.forEach(doc => loadedChannels.push({ id: doc.id, ...doc.data() } as YouTubeChannel));
+      setYoutubeChannels(loadedChannels.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    }, (error) => {
+      console.error("Error fetching youtube channels:", error);
+    });
+
+    // Listen to Telegram Channels
+    const telegramUnsub = onSnapshot(collection(db, `users/${uid}/telegram_channels`), (snapshot) => {
+      const loadedChannels: TelegramChannel[] = [];
+      snapshot.forEach(doc => loadedChannels.push({ id: doc.id, ...doc.data() } as TelegramChannel));
+      setTelegramChannels(loadedChannels.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    }, (error) => {
+      console.error("Error fetching telegram channels:", error);
+    });
+
+    // Listen to Study Apps
+    const studyAppsUnsub = onSnapshot(collection(db, `users/${uid}/study_apps`), (snapshot) => {
+      const loadedApps: StudyApp[] = [];
+      snapshot.forEach(doc => loadedApps.push({ id: doc.id, ...doc.data() } as StudyApp));
+      setStudyApps(loadedApps.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    }, (error) => {
+      console.error("Error fetching study apps:", error);
+    });
+
     return () => {
       tasksUnsub();
       subjectsUnsub();
       topicsUnsub();
       historyUnsub();
       journalUnsub();
+      youtubeUnsub();
+      telegramUnsub();
+      studyAppsUnsub();
     };
   }, [isAuthReady, firebaseUser]);
 
@@ -573,12 +660,93 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
+  const addYouTubeChannel = async (channel: Omit<YouTubeChannel, 'id' | 'createdAt'>) => {
+    if (!firebaseUser) return;
+    try {
+      await addDoc(collection(db, `users/${firebaseUser.uid}/youtube_channels`), {
+        ...channel,
+        userId: firebaseUser.uid,
+        createdAt: new Date().toISOString()
+      });
+      showToast("YouTube Channel added!", "success");
+    } catch (error) {
+      console.error("Error adding YouTube channel:", error);
+      showToast("Failed to add YouTube channel.", "error");
+    }
+  };
+
+  const deleteYouTubeChannel = async (id: string) => {
+    if (!firebaseUser) return;
+    try {
+      await deleteDoc(doc(db, `users/${firebaseUser.uid}/youtube_channels`, id));
+      showToast("YouTube Channel deleted.", "info");
+    } catch (error) {
+      console.error("Error deleting YouTube channel:", error);
+      showToast("Failed to delete YouTube channel.", "error");
+    }
+  };
+
+  const addTelegramChannel = async (channel: Omit<TelegramChannel, 'id' | 'createdAt'>) => {
+    if (!firebaseUser) return;
+    try {
+      await addDoc(collection(db, `users/${firebaseUser.uid}/telegram_channels`), {
+        ...channel,
+        userId: firebaseUser.uid,
+        createdAt: new Date().toISOString()
+      });
+      showToast("Telegram Channel added!", "success");
+    } catch (error) {
+      console.error("Error adding Telegram channel:", error);
+      showToast("Failed to add Telegram channel.", "error");
+    }
+  };
+
+  const deleteTelegramChannel = async (id: string) => {
+    if (!firebaseUser) return;
+    try {
+      await deleteDoc(doc(db, `users/${firebaseUser.uid}/telegram_channels`, id));
+      showToast("Telegram Channel deleted.", "info");
+    } catch (error) {
+      console.error("Error deleting Telegram channel:", error);
+      showToast("Failed to delete Telegram channel.", "error");
+    }
+  };
+
+  const addStudyApp = async (app: Omit<StudyApp, 'id' | 'createdAt'>) => {
+    if (!firebaseUser) return;
+    try {
+      await addDoc(collection(db, `users/${firebaseUser.uid}/study_apps`), {
+        ...app,
+        userId: firebaseUser.uid,
+        createdAt: new Date().toISOString()
+      });
+      showToast("Study App added!", "success");
+    } catch (error) {
+      console.error("Error adding Study App:", error);
+      showToast("Failed to add Study App.", "error");
+    }
+  };
+
+  const deleteStudyApp = async (id: string) => {
+    if (!firebaseUser) return;
+    try {
+      await deleteDoc(doc(db, `users/${firebaseUser.uid}/study_apps`, id));
+      showToast("Study App deleted.", "info");
+    } catch (error) {
+      console.error("Error deleting Study App:", error);
+      showToast("Failed to delete Study App.", "error");
+    }
+  };
+
   return (
     <StoreContext.Provider value={{
-      user, setUser, firebaseUser, isAuthReady, tasks, addTask, toggleTask, deleteTask, editTask,
+      user, setUser, firebaseUser, isAuthReady, theme, toggleTheme, tasks, addTask, toggleTask, deleteTask, editTask,
       subjects, addSubject, deleteSubject, addSubjectTime, topics, addTopic, deleteTopic, toggleTopicStatus, addTopicTime,
       focusTimeToday, focusHistory, currentStreak, bestStreak, addFocusTime, journalEntries, addJournalEntry,
       toasts, showToast, removeToast, updateUserCoins, addTreeGrown, isOffline,
+      youtubeChannels, addYouTubeChannel, deleteYouTubeChannel,
+      telegramChannels, addTelegramChannel, deleteTelegramChannel,
+      studyApps, addStudyApp, deleteStudyApp,
       timerState, setTimerState
     }}>
       {children}

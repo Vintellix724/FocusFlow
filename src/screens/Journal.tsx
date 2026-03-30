@@ -5,7 +5,7 @@ import { useStore } from '../context/StoreContext';
 
 export default function Journal() {
   const navigate = useNavigate();
-  const { addJournalEntry, showToast } = useStore();
+  const { addJournalEntry, showToast, theme, toggleTheme } = useStore();
   const [entry, setEntry] = useState('');
   const [mood, setMood] = useState<'great' | 'good' | 'okay' | 'bad' | null>(null);
 
@@ -29,11 +29,22 @@ export default function Journal() {
 
   return (
     <div className="bg-surface text-on-surface font-body min-h-screen flex flex-col pb-32">
-      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl pl-6 pr-16 py-4 border-b border-outline-variant/10 flex items-center gap-4">
-        <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors">
-          <span className="material-symbols-outlined text-on-surface-variant">arrow_back</span>
+      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl px-6 py-4 border-b border-outline-variant/10 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors">
+            <span className="material-symbols-outlined text-on-surface-variant">arrow_back</span>
+          </button>
+          <h1 className="font-syne font-bold text-2xl text-on-surface">Daily Reflection</h1>
+        </div>
+        <button 
+          onClick={toggleTheme}
+          className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors"
+          title="Toggle Theme"
+        >
+          <span className="material-symbols-outlined text-on-surface-variant">
+            {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+          </span>
         </button>
-        <h1 className="font-syne font-bold text-2xl text-on-surface">Daily Reflection</h1>
       </header>
 
       <main className="flex-grow p-6 space-y-8">

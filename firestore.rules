@@ -94,6 +94,31 @@ service cloud.firestore {
              data.minutes is number && data.minutes >= 0;
     }
 
+    function isValidYouTubeChannel(data) {
+      return hasOnlyAllowedFields(['userId', 'name', 'url', 'createdAt']) &&
+             data.userId is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.url is string && data.url.size() > 0 && data.url.size() < 500 &&
+             (!('createdAt' in data) || data.createdAt is string);
+    }
+
+    function isValidTelegramChannel(data) {
+      return hasOnlyAllowedFields(['userId', 'name', 'url', 'createdAt']) &&
+             data.userId is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.url is string && data.url.size() > 0 && data.url.size() < 500 &&
+             (!('createdAt' in data) || data.createdAt is string);
+    }
+
+    function isValidStudyApp(data) {
+      return hasOnlyAllowedFields(['userId', 'name', 'url', 'icon', 'createdAt']) &&
+             data.userId is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.url is string && data.url.size() > 0 && data.url.size() < 500 &&
+             (!('icon' in data) || (data.icon is string && data.icon.size() < 50)) &&
+             (!('createdAt' in data) || data.createdAt is string);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -147,6 +172,27 @@ service cloud.firestore {
         allow read: if isOwner(userId) || isAdmin();
         allow create: if isOwner(userId) && isValidFocusHistory(request.resource.data) && request.resource.data.userId == userId;
         allow update: if isOwner(userId) && isValidFocusHistory(request.resource.data) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      match /youtube_channels/{docId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidYouTubeChannel(request.resource.data) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidYouTubeChannel(request.resource.data) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      match /telegram_channels/{docId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidTelegramChannel(request.resource.data) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidTelegramChannel(request.resource.data) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      match /study_apps/{docId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidStudyApp(request.resource.data) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && isValidStudyApp(request.resource.data) && request.resource.data.userId == userId;
         allow delete: if isOwner(userId) || isAdmin();
       }
     }

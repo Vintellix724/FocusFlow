@@ -80,7 +80,7 @@ export default function Timer() {
   const { 
     user, addFocusTime, showToast, subjects, topics, tasks, 
     addTopicTime, addSubjectTime, updateUserCoins, addTreeGrown,
-    timerState, setTimerState
+    timerState, setTimerState, theme, toggleTheme
   } = useStore();
   
   const {
@@ -121,6 +121,65 @@ export default function Timer() {
   const [selectedSound, setSelectedSound] = useState(sounds[0]);
 
   const secondsAccumulator = useRef(0);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const progress = initialTime > 0 ? ((initialTime - timeLeft) / initialTime) * 100 : 0;
+
+  // PiP Canvas Drawing
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) return;
+    
+    // Clear
+    ctx.fillStyle = '#121212';
+    ctx.fillRect(0, 0, 400, 400);
+    
+    // Draw circle
+    ctx.beginPath();
+    ctx.arc(200, 200, 180, 0, 2 * Math.PI);
+    ctx.strokeStyle = '#333333';
+    ctx.lineWidth = 10;
+    ctx.stroke();
+    
+    // Draw progress
+    ctx.beginPath();
+    ctx.arc(200, 200, 180, -Math.PI / 2, (-Math.PI / 2) + (2 * Math.PI * (1 - progress / 100)));
+    ctx.strokeStyle = sessionType === 'focus' ? '#4CAF50' : '#2196F3';
+    ctx.lineWidth = 10;
+    ctx.stroke();
+
+    // Draw time
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 80px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(formatTime(timeLeft), 200, 200);
+    
+    // Draw status
+    ctx.font = '24px sans-serif';
+    ctx.fillStyle = '#aaaaaa';
+    ctx.fillText(sessionType === 'focus' ? 'FOCUS' : 'BREAK', 200, 280);
+  }, [timeLeft, sessionType, progress]);
+
+  const togglePiP = async () => {
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else if (videoRef.current && canvasRef.current) {
+        if (!videoRef.current.srcObject) {
+          const stream = canvasRef.current.captureStream(30);
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+        await videoRef.current.requestPictureInPicture();
+      }
+    } catch (error) {
+      console.error("PiP failed", error);
+      showToast("Picture-in-Picture is not supported on this device/browser.", "error");
+    }
+  };
 
   // Visibility API for Tree Withering
   useEffect(() => {
@@ -282,8 +341,6 @@ export default function Timer() {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const progress = ((initialTime - timeLeft) / initialTime) * 100;
-
   const handleSaveSettings = () => {
     setShowSettings(false);
     if (!isRunning) {
@@ -337,6 +394,22 @@ export default function Timer() {
             {treesGrownSession}
           </div>
           <button 
+            onClick={toggleTheme}
+            className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors"
+            title="Toggle Theme"
+          >
+            <span className="material-symbols-outlined text-on-surface-variant">
+              {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+            </span>
+          </button>
+          <button 
+            onClick={togglePiP}
+            className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors"
+            title="Picture-in-Picture"
+          >
+            <span className="material-symbols-outlined text-on-surface-variant">picture_in_picture_alt</span>
+          </button>
+          <button 
             onClick={() => setShowSettings(true)}
             className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors"
           >
@@ -344,6 +417,9 @@ export default function Timer() {
           </button>
         </div>
       </header>
+
+      <canvas ref={canvasRef} width="400" height="400" className="hidden" />
+      <video ref={videoRef} className="hidden" muted playsInline />
 
       <main className="flex-grow flex flex-col items-center justify-center px-6 py-8 relative z-10">
         {/* Tree Animation */}
@@ -391,6 +467,11 @@ export default function Timer() {
                         const newState = { ...prev, selectedTaskId: task.id };
                         const subject = subjects.find(s => s.name === task.subject);
                         if (subject) newState.selectedSubjectId = subject.id;
+                        if (task.duration && !prev.isRunning) {
+                          newState.focusDuration = task.duration;
+                          newState.timeLeft = task.duration * 60;
+                          newState.initialTime = task.duration * 60;
+                        }
                         return newState;
                       });
                       setShowTaskDropdown(false);
@@ -600,27 +681,87 @@ export default function Timer() {
       {/* Link Prompt Modal */}
       {showLinkPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-surface-container-high rounded-3xl p-6 w-full max-w-sm border border-outline-variant/20 shadow-2xl">
+          <div className="bg-surface-container-high rounded-3xl p-6 w-full max-w-sm border border-outline-variant/20 shadow-2xl max-h-[80vh] flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-syne font-bold text-xl">Link Session?</h3>
               <button onClick={() => { setShowLinkPrompt(false); setTimerState(prev => ({ ...prev, isRunning: true, targetEndTime: Date.now() + prev.timeLeft * 1000 })); }} className="text-on-surface-variant hover:text-on-surface">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <p className="text-sm text-on-surface-variant mb-6">
-              You haven't linked this focus session to a subject, topic, or task. Linking helps track your progress in the Planner.
+            <p className="text-sm text-on-surface-variant mb-4">
+              Select a task or subject to link, or start an unlinked session.
             </p>
-            <div className="flex flex-col gap-3">
-              <button 
-                onClick={() => {
-                  setShowLinkPrompt(false);
-                  // Open the task dropdown to encourage selection
-                  setShowTaskDropdown(true);
-                }}
-                className="w-full bg-primary text-on-primary py-3 rounded-xl font-bold hover:bg-primary/90 transition-colors"
-              >
-                Link to Task/Subject
-              </button>
+            
+            <div className="flex-1 overflow-y-auto mb-4 space-y-4 no-scrollbar">
+              {/* Tasks Section */}
+              <div>
+                <h4 className="font-label text-xs uppercase tracking-wider text-on-surface-variant mb-2">Tasks</h4>
+                <div className="space-y-2">
+                  {tasks.filter(t => !t.completed).map(task => (
+                    <button
+                      key={task.id}
+                      onClick={() => {
+                        setTimerState(prev => {
+                          const newState = { ...prev, selectedTaskId: task.id };
+                          const subject = subjects.find(s => s.name === task.subject);
+                          if (subject) newState.selectedSubjectId = subject.id;
+                          if (task.duration) {
+                            newState.focusDuration = task.duration;
+                            newState.timeLeft = task.duration * 60;
+                            newState.initialTime = task.duration * 60;
+                          }
+                          newState.isRunning = true;
+                          newState.targetEndTime = Date.now() + (task.duration ? task.duration * 60 : prev.timeLeft) * 1000;
+                          return newState;
+                        });
+                        setShowLinkPrompt(false);
+                      }}
+                      className="w-full text-left p-3 rounded-xl bg-surface-container-highest hover:bg-surface-container-highest/80 transition-colors border border-outline-variant/10 flex flex-col gap-1"
+                    >
+                      <span className="font-label text-sm font-medium truncate">{task.title}</span>
+                      <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                        <span className="truncate">{task.subject}</span>
+                        <span>•</span>
+                        <span>{task.duration} mins</span>
+                      </div>
+                    </button>
+                  ))}
+                  {tasks.filter(t => !t.completed).length === 0 && (
+                    <div className="text-center p-4 text-on-surface-variant text-sm bg-surface-container-highest rounded-xl">No pending tasks available.</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Subjects Section */}
+              <div>
+                <h4 className="font-label text-xs uppercase tracking-wider text-on-surface-variant mb-2">Subjects</h4>
+                <div className="space-y-2">
+                  {subjects.map(subject => (
+                    <button
+                      key={subject.id}
+                      onClick={() => {
+                        setTimerState(prev => ({
+                          ...prev,
+                          selectedSubjectId: subject.id,
+                          isRunning: true,
+                          targetEndTime: Date.now() + prev.timeLeft * 1000
+                        }));
+                        setShowLinkPrompt(false);
+                      }}
+                      className="w-full text-left p-3 rounded-xl bg-surface-container-highest hover:bg-surface-container-highest/80 transition-colors border border-outline-variant/10 flex items-center gap-2"
+                    >
+                      <span className={clsx("w-3 h-3 rounded-full", `bg-${subject.color}`)}></span>
+                      <span className="font-label text-sm font-medium truncate">{subject.name}</span>
+                    </button>
+                  ))}
+                  {subjects.length === 0 && (
+                    <div className="text-center p-4 text-on-surface-variant text-sm bg-surface-container-highest rounded-xl">No subjects available.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 mt-auto pt-2 border-t border-outline-variant/10">
               <button 
                 onClick={() => {
                   setShowLinkPrompt(false);

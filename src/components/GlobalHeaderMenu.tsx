@@ -8,7 +8,7 @@ import { signOut } from 'firebase/auth';
 
 export default function GlobalHeaderMenu() {
   const [isOpen, setIsOpen] = useState(false);
-  const { user, showToast } = useStore();
+  const { user, showToast, theme, toggleTheme } = useStore();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -19,6 +19,9 @@ export default function GlobalHeaderMenu() {
     { path: '/planner', icon: 'event_note', label: 'Planner' },
     { path: '/live-study-room', icon: 'groups', label: 'Live Study Room' },
     { path: '/leaderboard', icon: 'leaderboard', label: 'Leaderboard' },
+    { path: '/youtube-channels', icon: 'smart_display', label: 'YouTube Channels' },
+    { path: '/telegram-channels', icon: 'forum', label: 'Telegram Channels' },
+    { path: '/study-apps', icon: 'apps', label: 'Study Apps' },
     { path: '/about', icon: 'info', label: 'About App' },
   ];
 
@@ -36,11 +39,13 @@ export default function GlobalHeaderMenu() {
     }
   };
 
-  if (hideMenu) return null;
+  if (hideMenu) {
+    return null;
+  }
 
   return (
     <>
-      <div className="fixed top-4 left-4 z-[100]">
+      <div className="fixed top-4 left-4 z-[100] flex items-center gap-2">
         <button
           onClick={() => setIsOpen(true)}
           className="w-10 h-10 rounded-full bg-surface-container-high border border-outline-variant/20 shadow-lg flex items-center justify-center hover:bg-surface-container-highest transition-colors"
@@ -96,6 +101,15 @@ export default function GlobalHeaderMenu() {
                 ))}
                 
                 <div className="mt-4 pt-4 border-t border-outline-variant/10">
+                  <button
+                    onClick={toggleTheme}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors font-label tracking-wide text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface"
+                  >
+                    <span className="material-symbols-outlined">
+                      {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+                    </span>
+                    {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                  </button>
                   <button
                     onClick={handleLogout}
                     className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors font-label tracking-wide text-error hover:bg-error/10"

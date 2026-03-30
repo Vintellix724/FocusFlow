@@ -73,7 +73,7 @@ export default function Login() {
             </div>
 
             <button 
-              onClick={() => navigate('/home')}
+              onClick={() => showToast("Phone login coming soon!", "info")}
               className="w-full bg-surface-container-low text-on-surface-variant py-4 px-6 rounded-xl font-medium border border-outline-variant/20 hover:border-primary/40 hover:bg-surface-container-highest transition-all duration-200"
             >
               <span className="font-body text-sm">Use Phone Number</span>

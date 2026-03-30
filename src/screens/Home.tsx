@@ -8,7 +8,7 @@ import { motion } from 'framer-motion';
 
 export default function Home() {
   const navigate = useNavigate();
-  const { user, setUser, tasks, focusTimeToday, focusHistory, toggleTask, showToast, currentStreak, bestStreak, subjects, topics, updateUserCoins } = useStore();
+  const { user, setUser, tasks, focusTimeToday, focusHistory, toggleTask, showToast, currentStreak, bestStreak, subjects, topics, updateUserCoins, theme, toggleTheme } = useStore();
   
   const [showSpinWheel, setShowSpinWheel] = useState(false);
   const inspirationInputRef = useRef<HTMLInputElement>(null);
@@ -192,6 +192,15 @@ export default function Home() {
           </div>
         </div>
         <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          <button 
+            onClick={toggleTheme}
+            className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-800/50 transition-colors active:scale-95 duration-200 shrink-0"
+            title="Toggle Theme"
+          >
+            <span className="material-symbols-outlined text-on-surface-variant">
+              {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+            </span>
+          </button>
           <button 
             onClick={() => showToast("No new notifications", "info")}
             className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-800/50 transition-colors active:scale-95 duration-200 shrink-0"
