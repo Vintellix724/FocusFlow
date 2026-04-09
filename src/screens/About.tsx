@@ -39,6 +39,11 @@ export default function About() {
       description: "A friendly competitive space. Earn XP (Experience Points) by completing focus sessions and tasks. Climb the ranks by staying consistent and out-studying your peers."
     },
     {
+      title: "Coins & Rewards",
+      icon: "monetization_on",
+      description: "Coins are earned strictly through dedicated study time. You receive 2 coins for every minute spent focusing using the Timer. Manually ticking off tasks or topics will not grant coins—this ensures rewards accurately reflect your actual effort and time invested."
+    },
+    {
       title: "Profile & Analytics",
       icon: "person",
       description: "Deep dive into your study habits. View your focus distribution over the week, month, or year. See which subjects you spend the most time on, and adjust your daily goals and minimum streak requirements."
@@ -47,7 +52,7 @@ export default function About() {
 
   return (
     <div className="bg-surface text-on-surface font-body min-h-screen pb-32">
-      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl px-6 py-4 border-b border-outline-variant/10 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-xl px-6 py-4 border-b border-outline-variant/10 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors">
             <span className="material-symbols-outlined text-on-surface-variant">arrow_back</span>

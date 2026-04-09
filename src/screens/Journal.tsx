@@ -29,7 +29,7 @@ export default function Journal() {
 
   return (
     <div className="bg-surface text-on-surface font-body min-h-screen flex flex-col pb-32">
-      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl px-6 py-4 border-b border-outline-variant/10 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-xl px-6 py-4 border-b border-outline-variant/10 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors">
             <span className="material-symbols-outlined text-on-surface-variant">arrow_back</span>

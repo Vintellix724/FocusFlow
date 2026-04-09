@@ -222,14 +222,11 @@ export default function Analytics() {
 
     // Subject Breakdown
     const subjectMap: Record<string, number> = {};
-    subjects.forEach(s => subjectMap[s.name] = 0);
+    let totalSubjectMins = 0;
     
-    let totalTaskMins = 0;
-    tasks.forEach(t => {
-      if (t.completed && t.date >= startDateStr) {
-        subjectMap[t.subject] = (subjectMap[t.subject] || 0) + t.duration;
-        totalTaskMins += t.duration;
-      }
+    subjects.forEach(s => {
+      subjectMap[s.name] = s.timeSpent || 0;
+      totalSubjectMins += s.timeSpent || 0;
     });
 
     const COLORS = ['#7c3aed', '#db2777', '#0284c7', '#ea580c', '#16a34a', '#9333ea'];
@@ -237,7 +234,7 @@ export default function Analytics() {
       .filter(([_, mins]) => mins > 0)
       .map(([subject, mins], index) => {
         const hours = Number((mins / 60).toFixed(1));
-        const percentage = totalTaskMins > 0 ? Math.round((mins / totalTaskMins) * 100) : 0;
+        const percentage = totalSubjectMins > 0 ? Math.round((mins / totalSubjectMins) * 100) : 0;
         return {
           name: subject,
           value: hours,
@@ -368,7 +365,7 @@ export default function Analytics() {
 
   return (
     <div className="bg-surface text-on-surface font-body min-h-screen pb-32">
-      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl pl-16 pr-6 py-4 border-b border-outline-variant/10 flex justify-between items-center">
+      <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-xl pl-16 pr-6 py-4 border-b border-outline-variant/10 flex justify-between items-center">
         <h1 className="font-syne font-bold text-2xl text-on-surface">Analytics</h1>
       </header>
 

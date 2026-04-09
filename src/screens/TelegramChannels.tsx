@@ -58,7 +58,7 @@ export default function TelegramChannels() {
             <div>
               <label className="block font-label text-xs uppercase tracking-wider text-on-surface-variant mb-1">Telegram Link</label>
               <input 
-                type="url" 
+                type="text" 
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://t.me/..."

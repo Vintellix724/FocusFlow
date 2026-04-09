@@ -132,7 +132,7 @@ export default function Layout() {
     <MyErrorBoundary>
       <NotificationManager />
       <GlobalHeaderMenu />
-      <div className="flex flex-col min-h-screen">
+      <div className="flex flex-col min-h-screen pb-24">
         <div className="flex-grow">
           <Outlet />
         </div>

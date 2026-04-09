@@ -37,7 +37,7 @@ export default function Leaderboard() {
 
   return (
     <div className="bg-surface text-on-surface font-body min-h-screen pb-32">
-      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl pl-16 pr-6 py-4 border-b border-outline-variant/10">
+      <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-xl pl-16 pr-6 py-4 border-b border-outline-variant/10">
         <h1 className="font-syne font-bold text-2xl text-on-surface">Leaderboard</h1>
       </header>
 

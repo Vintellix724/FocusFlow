@@ -155,7 +155,7 @@ export default function Planner() {
 
   return (
     <div className="bg-surface text-on-surface font-body min-h-screen pb-32">
-      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl pl-16 pr-6 py-4 border-b border-outline-variant/10">
+      <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-xl pl-16 pr-6 py-4 border-b border-outline-variant/10">
         <div className="flex justify-between items-center mb-4">
           <h1 className="font-syne font-bold text-2xl text-on-surface">Planner</h1>
           <div className="flex gap-2">
@@ -324,7 +324,18 @@ export default function Planner() {
                             </button>
                           </div>
                           <div className="flex items-center justify-between mb-2 pr-16">
-                            <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">{task.time}</span>
+                            <div className="flex gap-2 items-center">
+                              <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">{task.time}</span>
+                              {task.priority && (
+                                <span className={clsx(
+                                  "font-mono text-[10px] px-2 py-0.5 rounded-md border uppercase",
+                                  task.priority === 'q1' ? 'bg-error/10 text-error border-error/20' :
+                                  task.priority === 'q2' ? 'bg-primary/10 text-primary border-primary/20' :
+                                  task.priority === 'q3' ? 'bg-tertiary/10 text-tertiary border-tertiary/20' :
+                                  'bg-surface-variant/10 text-surface-variant border-surface-variant/20'
+                                )}>{task.priority}</span>
+                              )}
+                            </div>
                             <span className={clsx(
                               "font-mono text-[10px] px-2 py-0.5 rounded-md border",
                               task.color === 'primary' ? 'bg-primary/10 text-primary border-primary/20' :
@@ -384,7 +395,18 @@ export default function Planner() {
                             </button>
                           </div>
                           <div className="flex items-center justify-between mb-2 pr-16">
-                            <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">{task.time}</span>
+                            <div className="flex gap-2 items-center">
+                              <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">{task.time}</span>
+                              {task.priority && (
+                                <span className={clsx(
+                                  "font-mono text-[10px] px-2 py-0.5 rounded-md border uppercase",
+                                  task.priority === 'q1' ? 'bg-error/10 text-error border-error/20' :
+                                  task.priority === 'q2' ? 'bg-primary/10 text-primary border-primary/20' :
+                                  task.priority === 'q3' ? 'bg-tertiary/10 text-tertiary border-tertiary/20' :
+                                  'bg-surface-variant/10 text-surface-variant border-surface-variant/20'
+                                )}>{task.priority}</span>
+                              )}
+                            </div>
                             <span className={clsx(
                               "font-mono text-[10px] px-2 py-0.5 rounded-md border",
                               task.color === 'primary' ? 'bg-primary/10 text-primary border-primary/20' :
@@ -472,8 +494,14 @@ export default function Planner() {
       </main>
 
       {showRoutineModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-surface-container-high w-full max-w-md rounded-3xl p-6 border border-outline-variant/20 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowRoutineModal(false)}
+        >
+          <div 
+            className="bg-surface-container-high w-full max-w-md rounded-3xl p-6 border border-outline-variant/20 shadow-2xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center mb-6">
               <h2 className="font-syne font-bold text-xl text-on-surface">Daily Routine</h2>
               <button onClick={() => setShowRoutineModal(false)} className="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors">
@@ -550,8 +578,14 @@ export default function Planner() {
       )}
 
       {showAddTask && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-surface-container-high w-full max-w-md rounded-3xl p-6 border border-outline-variant/20 shadow-2xl">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={closeAddTaskModal}
+        >
+          <div 
+            className="bg-surface-container-high w-full max-w-md rounded-3xl p-6 border border-outline-variant/20 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center mb-6">
               <h2 className="font-syne font-bold text-xl text-on-surface">{editingTaskId ? 'Edit Task' : 'Add New Task'}</h2>
               <button onClick={closeAddTaskModal} className="text-on-surface-variant hover:text-on-surface">

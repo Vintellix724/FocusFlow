@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useStore } from '../context/StoreContext';
+import Logo from '../components/Logo';
 
 export default function Splash() {
   const navigate = useNavigate();
@@ -30,21 +31,9 @@ export default function Splash() {
       <div className="absolute inset-0 bg-splash-glow pointer-events-none"></div>
       
       <div className="relative z-10 flex flex-col items-center">
-        <motion.div 
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: 'spring', damping: 15, stiffness: 150, delay: 0.4 }}
-          className="relative mb-8"
-        >
-          <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full scale-150"></div>
-          <div className="relative w-20 h-20 bg-gradient-to-br from-primary to-primary-container rounded-2xl flex items-center justify-center shadow-[0_0_40px_rgba(80,143,248,0.4)]">
-            <div className="flex items-center justify-center">
-              <span className="text-on-primary-container text-5xl font-syne font-extrabold translate-x-[-2px]">F</span>
-              <span className="material-symbols-outlined absolute text-primary-container/40 text-6xl translate-x-4 translate-y-[-4px]" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
-              <span className="material-symbols-outlined absolute text-on-primary-container text-4xl translate-x-1" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
-            </div>
-          </div>
-        </motion.div>
+        <div className="mb-8">
+          <Logo size="lg" animated={true} />
+        </div>
         
         <motion.div 
           initial={{ opacity: 0, y: 10 }}

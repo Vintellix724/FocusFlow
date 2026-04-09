@@ -96,15 +96,9 @@ export default function Subjects() {
 
   return (
     <div className="bg-surface text-on-surface font-body min-h-screen pb-32">
-      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl pl-16 pr-6 py-4 border-b border-outline-variant/10">
+      <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-xl pl-16 pr-6 py-4 border-b border-outline-variant/10">
         <div className="flex justify-between items-center mb-4">
           <h1 className="font-syne font-bold text-2xl text-on-surface">Subjects</h1>
-          <button 
-            onClick={() => setShowAddSubject(true)}
-            className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/20 transition-colors"
-          >
-            <span className="material-symbols-outlined text-sm">add</span>
-          </button>
         </div>
         
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
@@ -137,6 +131,31 @@ export default function Subjects() {
       </header>
 
       <main className="p-6 space-y-6">
+        <div className="flex gap-3 mb-6">
+          <button 
+            onClick={() => setShowAddSubject(true)}
+            className="flex-1 bg-surface-container-high border border-outline-variant/20 py-3 rounded-xl flex items-center justify-center gap-2 text-primary font-bold hover:bg-surface-container-highest transition-colors shadow-sm"
+          >
+            <span className="material-symbols-outlined">add_circle</span>
+            Add Subject
+          </button>
+          <button 
+            onClick={() => {
+              if (subjects.length === 0) {
+                showToast("Please add a subject first", "error");
+                setShowAddSubject(true);
+              } else {
+                setNewTopicSubject(activeTab !== 'all' ? activeTab : subjects[0].id);
+                setShowAddTopic(true);
+              }
+            }}
+            className="flex-1 bg-primary text-on-primary py-3 rounded-xl flex items-center justify-center gap-2 font-bold hover:bg-primary/90 transition-colors shadow-sm"
+          >
+            <span className="material-symbols-outlined">post_add</span>
+            Add Topic
+          </button>
+        </div>
+
         <div className="grid gap-4">
           {subjects.filter(s => activeTab === 'all' || s.id === activeTab).map((subject) => {
             const stats = getSubjectStats(subject.id);
@@ -267,8 +286,13 @@ export default function Subjects() {
 
       {/* Add Subject Modal */}
       {showAddSubject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-surface-container-high w-full max-w-md rounded-3xl p-6 border border-outline-variant/20 shadow-2xl">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        >
+          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={() => setShowAddSubject(false)}></div>
+          <div 
+            className="bg-surface-container-high w-full max-w-md rounded-3xl p-6 border border-outline-variant/20 shadow-2xl relative z-10"
+          >
             <div className="flex justify-between items-center mb-6">
               <h2 className="font-syne font-bold text-xl text-on-surface">Add New Subject</h2>
               <button onClick={() => setShowAddSubject(false)} className="text-on-surface-variant hover:text-on-surface">
@@ -327,8 +351,13 @@ export default function Subjects() {
 
       {/* Add Topic Modal */}
       {showAddTopic && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-surface-container-high w-full max-w-md rounded-3xl p-6 border border-outline-variant/20 shadow-2xl">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        >
+          <div className="absolute inset-0 bg-surface/80 backdrop-blur-sm" onClick={() => setShowAddTopic(false)}></div>
+          <div 
+            className="bg-surface-container-high w-full max-w-md rounded-3xl p-6 border border-outline-variant/20 shadow-2xl relative z-10"
+          >
             <div className="flex justify-between items-center mb-6">
               <h2 className="font-syne font-bold text-xl text-on-surface">Add New Topic/Chapter</h2>
               <button onClick={() => setShowAddTopic(false)} className="text-on-surface-variant hover:text-on-surface">
@@ -381,8 +410,13 @@ export default function Subjects() {
 
       {/* Delete Subject Confirmation Modal */}
       {subjectToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-surface-container-high w-full max-w-sm rounded-3xl p-6 border border-outline-variant/20 shadow-2xl text-center">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        >
+          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={() => setSubjectToDelete(null)}></div>
+          <div 
+            className="bg-surface-container-high w-full max-w-sm rounded-3xl p-6 border border-outline-variant/20 shadow-2xl text-center relative z-10"
+          >
             <div className="w-16 h-16 bg-error/10 text-error rounded-full flex items-center justify-center mx-auto mb-4">
               <span className="material-symbols-outlined text-3xl">warning</span>
             </div>
@@ -408,20 +442,6 @@ export default function Subjects() {
         </div>
       )}
 
-      <button 
-        onClick={() => {
-          if (subjects.length === 0) {
-            showToast("Please add a subject first", "error");
-            setShowAddSubject(true);
-          } else {
-            setNewTopicSubject(activeTab !== 'all' ? activeTab : subjects[0].id);
-            setShowAddTopic(true);
-          }
-        }}
-        className="fixed bottom-24 right-6 w-14 h-14 bg-primary text-on-primary rounded-full shadow-[0_4px_20px_rgba(172,199,255,0.4)] flex items-center justify-center active:scale-90 transition-transform z-40"
-      >
-        <span className="material-symbols-outlined text-3xl font-bold">add</span>
-      </button>
     </div>
   );
 }

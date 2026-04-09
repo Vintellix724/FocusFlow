@@ -204,13 +204,14 @@ export default function Resources() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
           >
+            <div className="absolute inset-0 bg-black/50" onClick={() => setIsAdding(false)}></div>
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-surface w-full max-w-sm rounded-3xl p-6 shadow-xl"
+              className="bg-surface w-full max-w-sm rounded-3xl p-6 shadow-xl relative z-10"
             >
               <h2 className="text-xl font-bold text-on-surface mb-4">
                 Add {activeTab === 'youtube' ? 'YouTube Channel' : activeTab === 'telegram' ? 'Telegram Channel' : 'Study App'}
@@ -230,7 +231,7 @@ export default function Resources() {
                 <div>
                   <label className="block text-sm font-medium text-on-surface-variant mb-1">URL / Link</label>
                   <input 
-                    type="url" 
+                    type="text" 
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     className="w-full bg-surface-variant border-none rounded-xl p-3 text-on-surface focus:ring-2 focus:ring-primary outline-none"

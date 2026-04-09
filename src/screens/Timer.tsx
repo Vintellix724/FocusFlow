@@ -110,15 +110,41 @@ export default function Timer() {
   const [showSettings, setShowSettings] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [showSoundDropdown, setShowSoundDropdown] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const sounds = [
-    { id: 'binaural', name: 'Binaural Beats', desc: 'Deep Focus 40Hz', icon: 'music_note' },
-    { id: 'rain', name: 'Heavy Rain', desc: 'Nature Sounds', icon: 'water_drop' },
-    { id: 'forest', name: 'Forest Birds', desc: 'Nature Sounds', icon: 'park' },
-    { id: 'lofi', name: 'Lo-Fi Beats', desc: 'Chill Study', icon: 'headphones' },
-    { id: 'white_noise', name: 'White Noise', desc: 'Block Distractions', icon: 'waves' }
+    { id: 'binaural', name: 'Binaural Beats', desc: 'Deep Focus 40Hz', icon: 'music_note', url: 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3' },
+    { id: 'rain', name: 'Heavy Rain', desc: 'Nature Sounds', icon: 'water_drop', url: 'https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3' },
+    { id: 'forest', name: 'Forest Birds', desc: 'Nature Sounds', icon: 'park', url: 'https://cdn.pixabay.com/download/audio/2021/08/09/audio_e19611f75b.mp3' },
+    { id: 'lofi', name: 'Lo-Fi Beats', desc: 'Chill Study', icon: 'headphones', url: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3' },
+    { id: 'white_noise', name: 'White Noise', desc: 'Block Distractions', icon: 'waves', url: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_78d5236263.mp3' }
   ];
   const [selectedSound, setSelectedSound] = useState(sounds[0]);
+
+  // Audio Playback Logic
+  useEffect(() => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio(selectedSound.url);
+      audioRef.current.loop = true;
+    } else if (audioRef.current.src !== selectedSound.url) {
+      audioRef.current.src = selectedSound.url;
+    }
+
+    if (isPlayingAudio && isRunning) {
+      audioRef.current.play().catch(err => {
+        console.error("Audio playback failed:", err);
+        setIsPlayingAudio(false);
+      });
+    } else {
+      audioRef.current.pause();
+    }
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+  }, [isPlayingAudio, selectedSound, isRunning]);
 
   const secondsAccumulator = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -194,36 +220,6 @@ export default function Timer() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isRunning, sessionType, showToast, setTimerState]);
 
-  // Sync with live_students collection
-  useEffect(() => {
-    if (!user) return;
-    
-    const liveRef = doc(db, 'live_students', user.uid);
-    
-    if (isRunning && sessionType === 'focus') {
-      const subjectName = subjects.find(s => s.id === selectedSubjectId)?.name || 'General';
-      const topicName = topics.find(t => t.id === selectedTopicId)?.name || 'Studying';
-      
-      setDoc(liveRef, {
-        userId: user.uid,
-        name: user.displayName || 'Student',
-        avatar: user.displayName ? user.displayName.charAt(0).toUpperCase() : 'S',
-        subject: subjectName,
-        topic: topicName,
-        status: 'focusing',
-        startTime: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }).catch(console.error);
-    } else {
-      deleteDoc(liveRef).catch(console.error);
-    }
-    
-    // We don't want to delete the doc on unmount if the timer is still running globally
-    // But we need to handle cleanup if they log out or something.
-    // For now, let's keep it simple: if they leave the page, the live room might still show them if timer is running.
-    // Actually, Live Room is supposed to show people *currently* focusing. If timer runs in background, they are focusing.
-  }, [isRunning, sessionType, user, selectedSubjectId, selectedTopicId, subjects, topics]);
-
   // Update selected topic when subject changes
   useEffect(() => {
     const subjectTopics = topics.filter(t => t.subjectId === selectedSubjectId);
@@ -233,83 +229,6 @@ export default function Timer() {
       setTimerState(prev => ({ ...prev, selectedTopicId: '' }));
     }
   }, [selectedSubjectId, topics, selectedTopicId, setTimerState]);
-
-  // Main Timer Logic (Timestamp based)
-  useEffect(() => {
-    let animationFrameId: number;
-    let lastTick = Date.now();
-
-    const tick = () => {
-      if (!isRunning || !targetEndTime) return;
-
-      const now = Date.now();
-      const remaining = Math.max(0, Math.ceil((targetEndTime - now) / 1000));
-
-      if (remaining !== timeLeft) {
-        setTimerState(prev => ({ ...prev, timeLeft: remaining }));
-
-        // Accumulate focus time
-        if (sessionType === 'focus') {
-          const deltaSeconds = Math.floor((now - lastTick) / 1000);
-          if (deltaSeconds > 0) {
-            secondsAccumulator.current += deltaSeconds;
-            lastTick = now;
-
-            if (secondsAccumulator.current >= 60) {
-              const minutesToAdd = Math.floor(secondsAccumulator.current / 60);
-              secondsAccumulator.current %= 60;
-              
-              addFocusTime(minutesToAdd);
-              if (selectedSubjectId) addSubjectTime(selectedSubjectId, minutesToAdd);
-              if (selectedTopicId) addTopicTime(selectedTopicId, minutesToAdd);
-            }
-          }
-        }
-      }
-
-      if (remaining <= 0) {
-        // Timer Finished
-        setTimerState(prev => ({ ...prev, isRunning: false, targetEndTime: null }));
-        
-        if (sessionType === 'focus') {
-          const taskName = selectedTaskId ? tasks.find(t => t.id === selectedTaskId)?.title : null;
-          showToast(`Session complete! ${taskName ? `Worked on: ${taskName}. ` : ''}+5 Coins. Tree Grown! 🌳`, "success");
-          updateUserCoins(5);
-          
-          if (treeState === 'growing') {
-            setTimerState(prev => ({ ...prev, treesGrownSession: prev.treesGrownSession + 1 }));
-            addTreeGrown();
-          }
-          
-          setTimerState(prev => ({
-            ...prev,
-            sessionType: 'break',
-            timeLeft: prev.breakDuration * 60,
-            initialTime: prev.breakDuration * 60
-          }));
-        } else {
-          showToast("Break over! Time to focus.", "info");
-          setTimerState(prev => ({
-            ...prev,
-            sessionType: 'focus',
-            treeState: 'growing',
-            timeLeft: prev.focusDuration * 60,
-            initialTime: prev.focusDuration * 60
-          }));
-        }
-      } else {
-        animationFrameId = requestAnimationFrame(tick);
-      }
-    };
-
-    if (isRunning) {
-      animationFrameId = requestAnimationFrame(tick);
-    }
-
-    return () => {
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    };
-  }, [isRunning, targetEndTime, timeLeft, sessionType, addFocusTime, selectedSubjectId, addSubjectTime, selectedTopicId, addTopicTime, showToast, selectedTaskId, tasks, updateUserCoins, treeState, addTreeGrown, setTimerState]);
 
   const toggleTimer = () => {
     if (!isRunning && !selectedSubjectId && !selectedTopicId && !selectedTaskId) {
@@ -680,8 +599,14 @@ export default function Timer() {
 
       {/* Link Prompt Modal */}
       {showLinkPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-surface-container-high rounded-3xl p-6 w-full max-w-sm border border-outline-variant/20 shadow-2xl max-h-[80vh] flex flex-col">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface/80 backdrop-blur-sm"
+          onClick={() => setShowLinkPrompt(false)}
+        >
+          <div 
+            className="bg-surface-container-high rounded-3xl p-6 w-full max-w-sm border border-outline-variant/20 shadow-2xl max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-syne font-bold text-xl">Link Session?</h3>
               <button onClick={() => { setShowLinkPrompt(false); setTimerState(prev => ({ ...prev, isRunning: true, targetEndTime: Date.now() + prev.timeLeft * 1000 })); }} className="text-on-surface-variant hover:text-on-surface">
@@ -778,8 +703,14 @@ export default function Timer() {
 
       {/* Settings Modal */}
       {showSettings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-surface-container-high rounded-3xl p-6 w-full max-w-sm border border-outline-variant/20 shadow-2xl">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface/80 backdrop-blur-sm"
+          onClick={() => setShowSettings(false)}
+        >
+          <div 
+            className="bg-surface-container-high rounded-3xl p-6 w-full max-w-sm border border-outline-variant/20 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-syne font-bold text-xl">Timer Settings</h3>
               <button onClick={() => setShowSettings(false)} className="text-on-surface-variant hover:text-on-surface">

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { auth, db } from '../firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, collection, onSnapshot, query, where, addDoc, deleteDoc, writeBatch } from 'firebase/firestore';
@@ -205,17 +205,140 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     targetEndTime: null,
   });
 
-  // Data states
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [focusHistory, setFocusHistory] = useState<Record<string, number>>({});
-  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
-  const [focusTimeToday, setFocusTimeToday] = useState<number>(0);
+  // Data states (Local Storage)
+  const [tasks, setTasks] = useState<Task[]>(() => JSON.parse(localStorage.getItem('focusflow_tasks') || '[]'));
+  const [subjects, setSubjects] = useState<Subject[]>(() => JSON.parse(localStorage.getItem('focusflow_subjects') || '[]'));
+  const [topics, setTopics] = useState<Topic[]>(() => JSON.parse(localStorage.getItem('focusflow_topics') || '[]'));
+  const [focusHistory, setFocusHistory] = useState<Record<string, number>>(() => JSON.parse(localStorage.getItem('focusflow_history') || '{}'));
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>(() => JSON.parse(localStorage.getItem('focusflow_journal') || '[]'));
+  const [focusTimeToday, setFocusTimeToday] = useState<number>(() => {
+    const history = JSON.parse(localStorage.getItem('focusflow_history') || '{}');
+    const todayStr = new Date().toISOString().split('T')[0];
+    return history[todayStr] || 0;
+  });
 
-  const [youtubeChannels, setYoutubeChannels] = useState<YouTubeChannel[]>([]);
-  const [telegramChannels, setTelegramChannels] = useState<TelegramChannel[]>([]);
-  const [studyApps, setStudyApps] = useState<StudyApp[]>([]);
+  const [youtubeChannels, setYoutubeChannels] = useState<YouTubeChannel[]>(() => JSON.parse(localStorage.getItem('focusflow_youtube') || '[]'));
+  const [telegramChannels, setTelegramChannels] = useState<TelegramChannel[]>(() => JSON.parse(localStorage.getItem('focusflow_telegram') || '[]'));
+  const [studyApps, setStudyApps] = useState<StudyApp[]>(() => JSON.parse(localStorage.getItem('focusflow_studyapps') || '[]'));
+
+  const secondsAccumulator = useRef(0);
+
+  // Global Timer Logic
+  useEffect(() => {
+    let animationFrameId: number;
+    let lastTick = Date.now();
+
+    const tick = () => {
+      if (!timerState.isRunning || !timerState.targetEndTime) return;
+
+      const now = Date.now();
+      const remaining = Math.max(0, Math.ceil((timerState.targetEndTime - now) / 1000));
+
+      if (remaining !== timerState.timeLeft) {
+        setTimerState(prev => ({ ...prev, timeLeft: remaining }));
+
+        // Accumulate focus time
+        if (timerState.sessionType === 'focus') {
+          const deltaSeconds = Math.floor((now - lastTick) / 1000);
+          if (deltaSeconds > 0) {
+            secondsAccumulator.current += deltaSeconds;
+            lastTick = now;
+
+            if (secondsAccumulator.current >= 60) {
+              const minutesToAdd = Math.floor(secondsAccumulator.current / 60);
+              secondsAccumulator.current %= 60;
+              
+              addFocusTime(minutesToAdd);
+              if (timerState.selectedSubjectId) addSubjectTime(timerState.selectedSubjectId, minutesToAdd);
+              if (timerState.selectedTopicId) addTopicTime(timerState.selectedTopicId, minutesToAdd);
+              updateUserCoins(minutesToAdd * 2); // Award 2 coins per minute studied
+            }
+          }
+        }
+      }
+
+      if (remaining <= 0) {
+        // Timer Finished
+        setTimerState(prev => ({ ...prev, isRunning: false, targetEndTime: null }));
+        
+        if (timerState.sessionType === 'focus') {
+          const taskName = timerState.selectedTaskId ? tasks.find(t => t.id === timerState.selectedTaskId)?.title : null;
+          showToast(`Session complete! ${taskName ? `Worked on: ${taskName}. ` : ''}Tree Grown! 🌳`, "success");
+          
+          if (timerState.treeState === 'growing') {
+            setTimerState(prev => ({ ...prev, treesGrownSession: prev.treesGrownSession + 1 }));
+            addTreeGrown();
+          }
+          
+          setTimerState(prev => ({
+            ...prev,
+            sessionType: 'break',
+            timeLeft: prev.breakDuration * 60,
+            initialTime: prev.breakDuration * 60
+          }));
+        } else {
+          showToast("Break over! Time to focus.", "info");
+          setTimerState(prev => ({
+            ...prev,
+            sessionType: 'focus',
+            treeState: 'growing',
+            timeLeft: prev.focusDuration * 60,
+            initialTime: prev.focusDuration * 60
+          }));
+        }
+      } else {
+        animationFrameId = requestAnimationFrame(tick);
+      }
+    };
+
+    if (timerState.isRunning) {
+      animationFrameId = requestAnimationFrame(tick);
+    }
+
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+  }, [timerState.isRunning, timerState.targetEndTime, timerState.timeLeft, timerState.sessionType, timerState.selectedSubjectId, timerState.selectedTopicId, timerState.selectedTaskId, timerState.treeState, tasks]);
+
+  // Sync with live_students collection globally
+  useEffect(() => {
+    if (!user || !firebaseUser) return;
+    
+    const liveRef = doc(db, 'live_students', firebaseUser.uid);
+    
+    if (timerState.isRunning && timerState.sessionType === 'focus') {
+      const subjectName = subjects.find(s => s.id === timerState.selectedSubjectId)?.name || 'General';
+      const topicName = topics.find(t => t.id === timerState.selectedTopicId)?.title || 'Studying';
+      
+      setDoc(liveRef, {
+        userId: firebaseUser.uid,
+        name: user.name || 'Student',
+        avatar: user.name ? user.name.charAt(0).toUpperCase() : 'S',
+        subject: subjectName,
+        topic: topicName,
+        status: 'focusing',
+        startTime: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }).catch(console.error);
+    } else {
+      deleteDoc(liveRef).catch(console.error);
+    }
+
+    // Cleanup on unmount (e.g. user logs out or closes app)
+    return () => {
+      deleteDoc(liveRef).catch(console.error);
+    };
+  }, [timerState.isRunning, timerState.sessionType, user, firebaseUser, timerState.selectedSubjectId, timerState.selectedTopicId, subjects, topics]);
+
+  // Save to Local Storage
+  useEffect(() => localStorage.setItem('focusflow_tasks', JSON.stringify(tasks)), [tasks]);
+  useEffect(() => localStorage.setItem('focusflow_subjects', JSON.stringify(subjects)), [subjects]);
+  useEffect(() => localStorage.setItem('focusflow_topics', JSON.stringify(topics)), [topics]);
+  useEffect(() => localStorage.setItem('focusflow_history', JSON.stringify(focusHistory)), [focusHistory]);
+  useEffect(() => localStorage.setItem('focusflow_journal', JSON.stringify(journalEntries)), [journalEntries]);
+  useEffect(() => localStorage.setItem('focusflow_youtube', JSON.stringify(youtubeChannels)), [youtubeChannels]);
+  useEffect(() => localStorage.setItem('focusflow_telegram', JSON.stringify(telegramChannels)), [telegramChannels]);
+  useEffect(() => localStorage.setItem('focusflow_studyapps', JSON.stringify(studyApps)), [studyApps]);
 
   // Auth Listener
   useEffect(() => {
@@ -263,12 +386,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       } else {
         setUserState(null);
-        setTasks([]);
-        setSubjects([]);
-        setTopics([]);
-        setFocusHistory({});
-        setJournalEntries([]);
-        setFocusTimeToday(0);
+        // Do not clear local data, allow offline/local usage
       }
       setIsAuthReady(true);
     });
@@ -279,105 +397,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, []);
 
-  // Data Listeners
-  useEffect(() => {
-    if (!isAuthReady || !firebaseUser) return;
 
-    const uid = firebaseUser.uid;
-
-    // Listen to Tasks
-    const tasksUnsub = onSnapshot(collection(db, `users/${uid}/tasks`), (snapshot) => {
-      const loadedTasks: Task[] = [];
-      snapshot.forEach(doc => loadedTasks.push({ id: doc.id, ...doc.data() } as Task));
-      setTasks(loadedTasks);
-    }, (error) => {
-      console.error("Error fetching tasks:", error);
-    });
-
-    // Listen to Subjects
-    const subjectsUnsub = onSnapshot(collection(db, `users/${uid}/subjects`), (snapshot) => {
-      const loadedSubjects: Subject[] = [];
-      snapshot.forEach(doc => loadedSubjects.push({ id: doc.id, ...doc.data() } as Subject));
-      setSubjects(loadedSubjects);
-    }, (error) => {
-      console.error("Error fetching subjects:", error);
-    });
-
-    // Listen to Topics
-    const topicsUnsub = onSnapshot(collection(db, `users/${uid}/topics`), (snapshot) => {
-      const loadedTopics: Topic[] = [];
-      snapshot.forEach(doc => loadedTopics.push({ id: doc.id, ...doc.data() } as Topic));
-      setTopics(loadedTopics);
-    }, (error) => {
-      console.error("Error fetching topics:", error);
-    });
-
-    // Listen to Focus History
-    const historyUnsub = onSnapshot(collection(db, `users/${uid}/focusHistory`), (snapshot) => {
-      const loadedHistory: Record<string, number> = {};
-      let todayMins = 0;
-      const todayStr = new Date().toISOString().split('T')[0];
-
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        loadedHistory[data.date] = data.minutes;
-        if (data.date === todayStr) {
-          todayMins = data.minutes;
-        }
-      });
-      setFocusHistory(loadedHistory);
-      setFocusTimeToday(todayMins);
-    }, (error) => {
-      console.error("Error fetching focus history:", error);
-    });
-
-    // Listen to Journal
-    const journalUnsub = onSnapshot(collection(db, `users/${uid}/journal`), (snapshot) => {
-      const loadedJournal: JournalEntry[] = [];
-      snapshot.forEach(doc => loadedJournal.push({ id: doc.id, ...doc.data() } as JournalEntry));
-      setJournalEntries(loadedJournal.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-    }, (error) => {
-      console.error("Error fetching journal:", error);
-    });
-
-    // Listen to YouTube Channels
-    const youtubeUnsub = onSnapshot(collection(db, `users/${uid}/youtube_channels`), (snapshot) => {
-      const loadedChannels: YouTubeChannel[] = [];
-      snapshot.forEach(doc => loadedChannels.push({ id: doc.id, ...doc.data() } as YouTubeChannel));
-      setYoutubeChannels(loadedChannels.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-    }, (error) => {
-      console.error("Error fetching youtube channels:", error);
-    });
-
-    // Listen to Telegram Channels
-    const telegramUnsub = onSnapshot(collection(db, `users/${uid}/telegram_channels`), (snapshot) => {
-      const loadedChannels: TelegramChannel[] = [];
-      snapshot.forEach(doc => loadedChannels.push({ id: doc.id, ...doc.data() } as TelegramChannel));
-      setTelegramChannels(loadedChannels.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-    }, (error) => {
-      console.error("Error fetching telegram channels:", error);
-    });
-
-    // Listen to Study Apps
-    const studyAppsUnsub = onSnapshot(collection(db, `users/${uid}/study_apps`), (snapshot) => {
-      const loadedApps: StudyApp[] = [];
-      snapshot.forEach(doc => loadedApps.push({ id: doc.id, ...doc.data() } as StudyApp));
-      setStudyApps(loadedApps.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-    }, (error) => {
-      console.error("Error fetching study apps:", error);
-    });
-
-    return () => {
-      tasksUnsub();
-      subjectsUnsub();
-      topicsUnsub();
-      historyUnsub();
-      journalUnsub();
-      youtubeUnsub();
-      telegramUnsub();
-      studyAppsUnsub();
-    };
-  }, [isAuthReady, firebaseUser]);
 
   // Sync subject timeSpent with topics timeSpent for backward compatibility
   useEffect(() => {
@@ -467,157 +487,125 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addTask = async (task: Omit<Task, 'id'>) => {
-    if (!firebaseUser) return;
-    const taskData = { ...task, userId: firebaseUser.uid };
-    await addDoc(collection(db, `users/${firebaseUser.uid}/tasks`), taskData);
+    const newTask = { ...task, id: Math.random().toString(36).substr(2, 9) };
+    setTasks(prev => [...prev, newTask as Task]);
   };
 
   const toggleTask = async (id: string) => {
-    if (!firebaseUser) return;
-    const task = tasks.find(t => t.id === id);
-    if (task) {
-      if (!task.completed) {
-        updateUserCoins(2);
-        showToast("Task completed! +2 Coins", "success");
+    setTasks(prev => prev.map(t => {
+      if (t.id === id) {
+        if (!t.completed) {
+          showToast("Task completed!", "success");
+        }
+        return { ...t, completed: !t.completed };
       }
-      const taskRef = doc(db, `users/${firebaseUser.uid}/tasks`, id);
-      await updateDoc(taskRef, { completed: !task.completed });
-    }
+      return t;
+    }));
   };
 
   const deleteTask = async (id: string) => {
-    if (!firebaseUser) return;
-    await deleteDoc(doc(db, `users/${firebaseUser.uid}/tasks`, id));
+    setTasks(prev => prev.filter(t => t.id !== id));
   };
 
   const editTask = async (id: string, updatedTask: Partial<Task>) => {
-    if (!firebaseUser) return;
-    const taskRef = doc(db, `users/${firebaseUser.uid}/tasks`, id);
-    await updateDoc(taskRef, updatedTask);
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updatedTask } : t));
   };
 
   const addSubject = async (subject: Omit<Subject, 'id'>) => {
-    if (!firebaseUser) return;
-    const subjectData = { ...subject, userId: firebaseUser.uid, createdAt: new Date().toISOString() };
-    await addDoc(collection(db, `users/${firebaseUser.uid}/subjects`), subjectData);
+    const newSubject = { ...subject, id: Math.random().toString(36).substr(2, 9) };
+    setSubjects(prev => [...prev, newSubject as Subject]);
   };
 
   const deleteSubject = async (id: string) => {
-    if (!firebaseUser) return;
-    
-    // Delete subject
-    await deleteDoc(doc(db, `users/${firebaseUser.uid}/subjects`, id));
-    
-    // Delete associated topics
-    const topicsToDelete = topics.filter(t => t.subjectId === id);
-    const batch = writeBatch(db);
-    topicsToDelete.forEach(t => {
-      const topicRef = doc(db, `users/${firebaseUser.uid}/topics`, t.id);
-      batch.delete(topicRef);
-    });
-    await batch.commit();
+    setSubjects(prev => prev.filter(s => s.id !== id));
+    setTopics(prev => prev.filter(t => t.subjectId !== id));
   };
 
   const addSubjectTime = async (id: string, mins: number) => {
-    if (!firebaseUser) return;
-    const subject = subjects.find(s => s.id === id);
-    if (subject) {
-      const subjectRef = doc(db, `users/${firebaseUser.uid}/subjects`, id);
-      await updateDoc(subjectRef, { timeSpent: (subject.timeSpent || 0) + mins });
-    }
+    setSubjects(prev => prev.map(s => s.id === id ? { ...s, timeSpent: (s.timeSpent || 0) + mins } : s));
   };
 
   const addTopic = async (topic: Omit<Topic, 'id' | 'timeSpent' | 'status' | 'lastUpdated'>) => {
-    if (!firebaseUser) return;
-    const topicData = {
+    const newTopic = {
       ...topic,
-      userId: firebaseUser.uid,
-      status: 'Pending',
+      id: Math.random().toString(36).substr(2, 9),
+      status: 'Pending' as const,
       timeSpent: 0,
       lastUpdated: new Date().toISOString()
     };
-    await addDoc(collection(db, `users/${firebaseUser.uid}/topics`), topicData);
+    setTopics(prev => [...prev, newTopic as Topic]);
   };
 
   const deleteTopic = async (id: string) => {
-    if (!firebaseUser) return;
-    await deleteDoc(doc(db, `users/${firebaseUser.uid}/topics`, id));
+    setTopics(prev => prev.filter(t => t.id !== id));
   };
 
   const toggleTopicStatus = async (id: string) => {
-    if (!firebaseUser) return;
-    const topic = topics.find(t => t.id === id);
-    if (topic) {
-      if (topic.status !== 'Completed') {
-        updateUserCoins(5);
-        showToast("Topic completed! +5 Coins", "success");
+    setTopics(prev => prev.map(t => {
+      if (t.id === id) {
+        if (t.status !== 'Completed') {
+          showToast("Topic completed!", "success");
+        }
+        const newStatus = t.status === 'Completed' ? 'In Progress' : 'Completed';
+        return { 
+          ...t, 
+          status: newStatus, 
+          timeSpent: newStatus === 'Completed' ? Math.max(t.timeSpent, t.targetMinutes) : t.timeSpent 
+        };
       }
-      const newStatus = topic.status === 'Completed' ? 'In Progress' : 'Completed';
-      const topicRef = doc(db, `users/${firebaseUser.uid}/topics`, id);
-      await updateDoc(topicRef, { 
-        status: newStatus, 
-        timeSpent: newStatus === 'Completed' ? Math.max(topic.timeSpent, topic.targetMinutes) : topic.timeSpent 
-      });
-    }
+      return t;
+    }));
   };
 
   const addTopicTime = async (id: string, mins: number) => {
-    if (!firebaseUser) return;
-    const topic = topics.find(t => t.id === id);
-    if (topic) {
-      const newTime = topic.timeSpent + mins;
-      const isCompleted = newTime >= topic.targetMinutes;
-      if (isCompleted && topic.status !== 'Completed') {
-        updateUserCoins(5);
-        showToast("Topic auto-completed! +5 Coins", "success");
+    setTopics(prev => prev.map(t => {
+      if (t.id === id) {
+        const newTime = t.timeSpent + mins;
+        const isCompleted = newTime >= t.targetMinutes;
+        if (isCompleted && t.status !== 'Completed') {
+          showToast("Topic auto-completed!", "success");
+        }
+        return {
+          ...t,
+          timeSpent: newTime,
+          status: isCompleted ? 'Completed' : 'In Progress',
+          lastUpdated: new Date().toISOString()
+        };
       }
-      const topicRef = doc(db, `users/${firebaseUser.uid}/topics`, id);
-      await updateDoc(topicRef, {
-        timeSpent: newTime,
-        status: isCompleted ? 'Completed' : 'In Progress',
-        lastUpdated: new Date().toISOString()
-      });
-    }
+      return t;
+    }));
   };
 
   const addFocusTime = async (mins: number) => {
-    if (!firebaseUser) return;
     const today = new Date().toISOString().split('T')[0];
-    const currentMins = focusHistory[today] || 0;
-    const newMins = currentMins + mins;
-    
-    // Update local state immediately for snappy UI
-    setFocusTimeToday(newMins);
-    setFocusHistory(prev => ({ ...prev, [today]: newMins }));
+    setFocusHistory(prev => {
+      const currentMins = prev[today] || 0;
+      const newMins = currentMins + mins;
+      setFocusTimeToday(newMins);
+      return { ...prev, [today]: newMins };
+    });
 
-    // Update Firestore using setDoc with merge (works perfectly offline without needing getDoc)
-    const historyRef = doc(db, `users/${firebaseUser.uid}/focusHistory`, today);
-    try {
-      await setDoc(historyRef, { userId: firebaseUser.uid, date: today, minutes: newMins }, { merge: true });
-    } catch (error) {
-      console.error("Error updating focus history:", error);
-    }
-
-    // Update total focus minutes on user document
+    // Update total focus minutes on user document (Firebase)
     if (user) {
       const newTotal = (user.totalFocusMinutes || 0) + mins;
       setUser({ ...user, totalFocusMinutes: newTotal });
-      try {
-        await updateDoc(doc(db, 'users', firebaseUser.uid), { totalFocusMinutes: newTotal });
-      } catch (error) {
-        console.error("Error updating total focus minutes:", error);
+      if (firebaseUser) {
+        try {
+          await updateDoc(doc(db, 'users', firebaseUser.uid), { totalFocusMinutes: newTotal });
+        } catch (error) {
+          console.error("Error updating total focus minutes:", error);
+        }
       }
     }
   };
 
   const addJournalEntry = async (entry: Omit<JournalEntry, 'id' | 'date'>) => {
-    if (!firebaseUser) return;
-    const entryData = {
+    const newEntry = {
       ...entry,
-      userId: firebaseUser.uid,
+      id: Math.random().toString(36).substr(2, 9),
       date: new Date().toISOString()
     };
-    await addDoc(collection(db, `users/${firebaseUser.uid}/journal`), entryData);
+    setJournalEntries(prev => [newEntry as JournalEntry, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
   };
 
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'info') => {
@@ -661,81 +649,48 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const addYouTubeChannel = async (channel: Omit<YouTubeChannel, 'id' | 'createdAt'>) => {
-    if (!firebaseUser) return;
-    try {
-      await addDoc(collection(db, `users/${firebaseUser.uid}/youtube_channels`), {
-        ...channel,
-        userId: firebaseUser.uid,
-        createdAt: new Date().toISOString()
-      });
-      showToast("YouTube Channel added!", "success");
-    } catch (error) {
-      console.error("Error adding YouTube channel:", error);
-      showToast("Failed to add YouTube channel.", "error");
-    }
+    const newChannel = {
+      ...channel,
+      id: Math.random().toString(36).substr(2, 9),
+      createdAt: new Date().toISOString()
+    };
+    setYoutubeChannels(prev => [newChannel as YouTubeChannel, ...prev]);
+    showToast("YouTube Channel added!", "success");
   };
 
   const deleteYouTubeChannel = async (id: string) => {
-    if (!firebaseUser) return;
-    try {
-      await deleteDoc(doc(db, `users/${firebaseUser.uid}/youtube_channels`, id));
-      showToast("YouTube Channel deleted.", "info");
-    } catch (error) {
-      console.error("Error deleting YouTube channel:", error);
-      showToast("Failed to delete YouTube channel.", "error");
-    }
+    setYoutubeChannels(prev => prev.filter(c => c.id !== id));
+    showToast("YouTube Channel deleted.", "info");
   };
 
   const addTelegramChannel = async (channel: Omit<TelegramChannel, 'id' | 'createdAt'>) => {
-    if (!firebaseUser) return;
-    try {
-      await addDoc(collection(db, `users/${firebaseUser.uid}/telegram_channels`), {
-        ...channel,
-        userId: firebaseUser.uid,
-        createdAt: new Date().toISOString()
-      });
-      showToast("Telegram Channel added!", "success");
-    } catch (error) {
-      console.error("Error adding Telegram channel:", error);
-      showToast("Failed to add Telegram channel.", "error");
-    }
+    const newChannel = {
+      ...channel,
+      id: Math.random().toString(36).substr(2, 9),
+      createdAt: new Date().toISOString()
+    };
+    setTelegramChannels(prev => [newChannel as TelegramChannel, ...prev]);
+    showToast("Telegram Channel added!", "success");
   };
 
   const deleteTelegramChannel = async (id: string) => {
-    if (!firebaseUser) return;
-    try {
-      await deleteDoc(doc(db, `users/${firebaseUser.uid}/telegram_channels`, id));
-      showToast("Telegram Channel deleted.", "info");
-    } catch (error) {
-      console.error("Error deleting Telegram channel:", error);
-      showToast("Failed to delete Telegram channel.", "error");
-    }
+    setTelegramChannels(prev => prev.filter(c => c.id !== id));
+    showToast("Telegram Channel deleted.", "info");
   };
 
   const addStudyApp = async (app: Omit<StudyApp, 'id' | 'createdAt'>) => {
-    if (!firebaseUser) return;
-    try {
-      await addDoc(collection(db, `users/${firebaseUser.uid}/study_apps`), {
-        ...app,
-        userId: firebaseUser.uid,
-        createdAt: new Date().toISOString()
-      });
-      showToast("Study App added!", "success");
-    } catch (error) {
-      console.error("Error adding Study App:", error);
-      showToast("Failed to add Study App.", "error");
-    }
+    const newApp = {
+      ...app,
+      id: Math.random().toString(36).substr(2, 9),
+      createdAt: new Date().toISOString()
+    };
+    setStudyApps(prev => [newApp as StudyApp, ...prev]);
+    showToast("Study App added!", "success");
   };
 
   const deleteStudyApp = async (id: string) => {
-    if (!firebaseUser) return;
-    try {
-      await deleteDoc(doc(db, `users/${firebaseUser.uid}/study_apps`, id));
-      showToast("Study App deleted.", "info");
-    } catch (error) {
-      console.error("Error deleting Study App:", error);
-      showToast("Failed to delete Study App.", "error");
-    }
+    setStudyApps(prev => prev.filter(a => a.id !== id));
+    showToast("Study App deleted.", "info");
   };
 
   return (

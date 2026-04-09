@@ -17,7 +17,9 @@ import About from './screens/About';
 import YouTubeChannels from './screens/YouTubeChannels';
 import TelegramChannels from './screens/TelegramChannels';
 import StudyApps from './screens/StudyApps';
+import MockTests from './screens/MockTests';
 import Layout from './components/Layout';
+import Background3D from './components/Background3D';
 import { StoreProvider, useStore } from './context/StoreContext';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -42,12 +44,14 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 export default function App() {
   return (
     <StoreProvider>
+      <Background3D />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Splash />} />
           <Route path="/welcome" element={<Welcome />} />
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/admin" element={<Admin />} />
           
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="/home" element={<Home />} />
@@ -59,10 +63,10 @@ export default function App() {
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/live-study-room" element={<LiveStudyRoom />} />
             <Route path="/about" element={<About />} />
-            <Route path="/admin" element={<Admin />} />
             <Route path="/youtube-channels" element={<YouTubeChannels />} />
             <Route path="/telegram-channels" element={<TelegramChannels />} />
             <Route path="/study-apps" element={<StudyApps />} />
+            <Route path="/mock-tests" element={<MockTests />} />
           </Route>
         </Routes>
       </BrowserRouter>

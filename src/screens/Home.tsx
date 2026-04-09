@@ -183,7 +183,7 @@ export default function Home() {
 
   return (
     <div className="bg-surface text-on-surface font-body selection:bg-primary/30 min-h-screen pb-32">
-      <header className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-xl flex justify-between items-center pl-16 pr-6 py-4 tonal-depth-shift shadow-[0_0_20px_rgba(79,142,247,0.15)]">
+      <header className="sticky top-0 z-50 bg-surface/80 backdrop-blur-xl flex justify-between items-center pl-16 pr-6 py-4 shadow-[0_0_20px_rgba(79,142,247,0.15)]">
         <div className="flex flex-col flex-1 min-w-0 mr-2">
           <h1 className="font-syne font-bold text-lg text-on-surface truncate">{greeting}, {user?.name?.split(' ')[0] || 'Student'} 👋</h1>
           <div className="flex flex-wrap gap-2 mt-1">
@@ -203,7 +203,7 @@ export default function Home() {
           </button>
           <button 
             onClick={() => showToast("No new notifications", "info")}
-            className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-800/50 transition-colors active:scale-95 duration-200 shrink-0"
+            className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-highest/50 transition-colors active:scale-95 duration-200 shrink-0"
           >
             <span className="material-symbols-outlined text-on-surface-variant">notifications</span>
           </button>
@@ -221,15 +221,15 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="p-4 space-y-6 max-w-2xl mx-auto">
-        <section className="relative rounded-2xl bg-surface-container-high overflow-hidden shadow-lg border border-outline-variant/10">
+      <main className="p-4 space-y-6 max-w-2xl mx-auto pb-32">
+        <section className="relative rounded-3xl bg-surface-container-high/60 backdrop-blur-xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.2)] border border-white/5">
           {user?.inspirationImage ? (
-            <div className="relative w-full group bg-surface-container-highest/30 flex justify-center items-center min-h-[200px]" style={{ width: '291.667px' }}>
-              <img src={user.inspirationImage} alt="Inspiration" className="w-full h-auto max-h-[60vh] object-contain" />
-              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <div className="relative w-full group flex justify-center items-center min-h-[200px]">
+              <img src={user.inspirationImage} alt="Inspiration" className="w-full h-auto max-h-[60vh] object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-6">
                 <button 
                   onClick={() => inspirationInputRef.current?.click()}
-                  className="bg-primary text-on-primary px-4 py-2 rounded-full font-label uppercase tracking-wider text-xs shadow-lg"
+                  className="self-end bg-white/10 hover:bg-white/20 backdrop-blur-md text-white px-4 py-2 rounded-full font-label uppercase tracking-wider text-xs border border-white/20 transition-all"
                 >
                   Change Inspiration
                 </button>
@@ -238,10 +238,11 @@ export default function Home() {
           ) : (
             <div 
               onClick={() => inspirationInputRef.current?.click()}
-              className="h-48 w-full flex flex-col items-center justify-center cursor-pointer hover:bg-surface-container-highest transition-colors border-2 border-dashed border-outline-variant/30 m-4 rounded-xl"
-              style={{ width: '291.667px' }}
+              className="h-48 w-full flex flex-col items-center justify-center cursor-pointer hover:bg-surface-container-highest/50 transition-all border-2 border-dashed border-white/10 m-4 rounded-2xl"
             >
-              <span className="material-symbols-outlined text-4xl text-primary mb-2">add_photo_alternate</span>
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                <span className="material-symbols-outlined text-2xl text-primary">add_photo_alternate</span>
+              </div>
               <p className="font-syne font-bold text-on-surface">Add Your Inspiration</p>
               <p className="text-xs text-on-surface-variant mt-1">What drives you? Upload an image.</p>
             </div>
@@ -255,8 +256,9 @@ export default function Home() {
           />
         </section>
 
-        <section className="bg-surface-container-high rounded-2xl p-6 flex items-center justify-between gap-6 shadow-lg">
-          <div className="flex-1 space-y-4">
+        <section className="bg-gradient-to-br from-surface-container-high to-surface-container-low rounded-3xl p-6 flex items-center justify-between gap-6 shadow-[0_8px_32px_rgba(0,0,0,0.2)] border border-white/5 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
+          <div className="flex-1 space-y-4 relative z-10">
             <div>
               <h3 className="font-label text-on-surface-variant text-sm font-medium mb-1">Today's Focus</h3>
               <div className="flex items-baseline gap-2">
@@ -294,59 +296,92 @@ export default function Home() {
                 )}
               </div>
             </div>
-            <div className="space-y-3">
-              <div className="w-full h-2 bg-surface-container-lowest rounded-full overflow-hidden">
-                <div className="h-full bg-tertiary rounded-full shadow-[0_0_10px_rgba(56,223,171,0.5)]" style={{ width: `${focusProgress}%` }}></div>
+            <div className="space-y-4">
+              <div className="w-full h-2 bg-black/20 rounded-full overflow-hidden backdrop-blur-sm border border-white/5">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${focusProgress}%` }}
+                  transition={{ duration: 1, ease: "easeOut" }}
+                  className="h-full bg-gradient-to-r from-primary to-tertiary rounded-full shadow-[0_0_15px_rgba(56,223,171,0.6)]" 
+                />
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-3">
                 {todaySubjectProgress.map((sub, i) => (
-                  <div key={i} className="space-y-1">
-                    <div className="h-1 bg-surface-container-lowest rounded-full overflow-hidden">
-                      <div className={`h-full ${sub.color}`} style={{ width: `${sub.progress}%` }}></div>
+                  <div key={i} className="space-y-1.5">
+                    <div className="h-1 bg-black/20 rounded-full overflow-hidden border border-white/5">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${sub.progress}%` }}
+                        transition={{ duration: 1, delay: i * 0.1 }}
+                        className={`h-full ${sub.color} shadow-[0_0_8px_currentColor]`} 
+                      />
                     </div>
-                    <span className="font-mono text-[8px] uppercase text-on-surface-variant">{sub.name}</span>
+                    <span className="font-mono text-[9px] uppercase tracking-wider text-on-surface-variant/80">{sub.name}</span>
                   </div>
                 ))}
               </div>
             </div>
           </div>
-          <div className="relative w-28 h-28 flex items-center justify-center">
-            <svg className="w-full h-full -rotate-90">
-              <circle className="text-surface-container-lowest" cx="56" cy="56" fill="transparent" r="48" stroke="currentColor" strokeWidth="8"></circle>
-              <circle className="text-tertiary" cx="56" cy="56" fill="transparent" r="48" stroke="currentColor" strokeDasharray="301.59" strokeDashoffset={301.59 - (301.59 * focusProgress) / 100} strokeLinecap="round" strokeWidth="8" style={{ transition: 'stroke-dashoffset 1s ease-in-out' }}></circle>
+          <div className="relative w-32 h-32 flex items-center justify-center shrink-0">
+            <svg className="w-full h-full -rotate-90 drop-shadow-lg">
+              <circle className="text-black/20" cx="64" cy="64" fill="transparent" r="54" stroke="currentColor" strokeWidth="6"></circle>
+              <motion.circle 
+                className="text-tertiary" 
+                cx="64" cy="64" fill="transparent" r="54" 
+                stroke="url(#gradient)" 
+                strokeDasharray="339.29" 
+                initial={{ strokeDashoffset: 339.29 }}
+                animate={{ strokeDashoffset: 339.29 - (339.29 * focusProgress) / 100 }}
+                transition={{ duration: 1.5, ease: "easeOut" }}
+                strokeLinecap="round" strokeWidth="6"
+              />
+              <defs>
+                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="var(--color-primary)" />
+                  <stop offset="100%" stopColor="var(--color-tertiary)" />
+                </linearGradient>
+              </defs>
             </svg>
             <div className="absolute flex flex-col items-center">
-              <span className="font-mono font-bold text-xl text-on-surface">{Math.round(focusProgress)}%</span>
-              <span className="font-label text-[8px] uppercase tracking-tighter text-on-surface-variant">Complete</span>
+              <span className="font-syne font-bold text-3xl text-on-surface">{Math.round(focusProgress)}<span className="text-lg text-on-surface-variant">%</span></span>
+              <span className="font-label text-[9px] uppercase tracking-widest text-on-surface-variant mt-1">Complete</span>
             </div>
-            <div className="absolute inset-0 bg-tertiary/10 blur-2xl rounded-full"></div>
+            <div className="absolute inset-0 bg-primary/5 blur-3xl rounded-full -z-10"></div>
           </div>
         </section>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-surface-container-high rounded-2xl p-6 space-y-4">
-            <div className="flex justify-between items-start">
+          <div className="bg-gradient-to-br from-surface-container-high to-surface-container-low rounded-3xl p-6 space-y-5 shadow-[0_8px_32px_rgba(0,0,0,0.2)] border border-white/5 relative overflow-hidden group">
+            <div className="absolute -right-10 -top-10 w-40 h-40 bg-error/5 rounded-full blur-3xl group-hover:bg-error/10 transition-colors duration-500"></div>
+            <div className="flex justify-between items-start relative z-10">
               <h3 className="font-label text-xs uppercase tracking-widest text-on-surface-variant">Streak Engine</h3>
-              <span className="material-symbols-outlined text-tertiary" style={{ fontVariationSettings: "'FILL' 1" }}>local_fire_department</span>
+              <div className="w-10 h-10 rounded-full bg-error/10 flex items-center justify-center border border-error/20">
+                <span className="material-symbols-outlined text-error" style={{ fontVariationSettings: "'FILL' 1" }}>local_fire_department</span>
+              </div>
             </div>
-            <div>
-              <div className="font-syne font-bold text-2xl text-tertiary">{currentStreak} days</div>
-              <div className="font-mono text-[10px] text-on-surface-variant uppercase mt-1">Personal Best: {bestStreak} days</div>
+            <div className="relative z-10">
+              <div className="font-syne font-bold text-4xl text-on-surface flex items-baseline gap-2">
+                {currentStreak} <span className="text-lg text-on-surface-variant font-medium">days</span>
+              </div>
+              <div className="font-mono text-[10px] text-on-surface-variant uppercase mt-2 tracking-wider">Personal Best: <span className="text-on-surface">{bestStreak} days</span></div>
             </div>
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid grid-cols-7 gap-1.5 relative z-10 pt-2">
               {streakGrid.map((day, i) => (
-                <div 
+                <motion.div 
                   key={i} 
-                  className={`aspect-square rounded-sm ${day.opacity === 0 ? 'bg-surface-container-lowest' : 'bg-tertiary'}`}
-                  style={day.opacity > 0 ? { opacity: day.opacity } : {}}
-                ></div>
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: day.opacity > 0 ? day.opacity : 1 }}
+                  transition={{ delay: i * 0.05 }}
+                  className={`aspect-square rounded-md ${day.opacity === 0 ? 'bg-black/20 border border-white/5' : 'bg-gradient-to-br from-error to-orange-500 shadow-[0_0_10px_rgba(239,68,68,0.4)]'}`}
+                />
               ))}
             </div>
           </div>
 
-          <div className="bg-surface-container-high rounded-2xl p-6 flex flex-col items-center justify-between text-center relative overflow-hidden">
-            <div className="absolute top-4 left-4 font-label text-[10px] uppercase tracking-widest text-on-surface-variant text-left z-10">
-              Virtual Forest<br/><span className="text-tertiary">{user?.treesGrown || 0} Trees Grown</span>
+          <div className="bg-gradient-to-br from-surface-container-high to-surface-container-low rounded-3xl p-6 flex flex-col items-center justify-between text-center relative overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.2)] border border-white/5 group">
+            <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-tertiary/5 rounded-full blur-3xl group-hover:bg-tertiary/10 transition-colors duration-500"></div>
+            <div className="absolute top-6 left-6 font-label text-[10px] uppercase tracking-widest text-on-surface-variant text-left z-10">
+              Virtual Forest<br/><span className="text-tertiary font-bold text-xs mt-1 block">{user?.treesGrown || 0} Trees Grown</span>
             </div>
             <div className="mt-8 relative w-32 h-32 flex items-end justify-center">
               <svg viewBox="0 0 100 100" className="w-full h-full overflow-visible">
@@ -402,63 +437,87 @@ export default function Home() {
           </div>
         </div>
 
-        <section className="bg-surface-container-high rounded-2xl overflow-hidden shadow-2xl">
-          <div className="bg-primary/10 px-6 py-2 border-b border-primary/5 flex items-center gap-2">
+        <section className="bg-gradient-to-br from-surface-container-high to-surface-container-low rounded-3xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.2)] border border-white/5 relative group">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-tertiary to-primary opacity-50"></div>
+          <div className="bg-primary/5 px-6 py-3 border-b border-white/5 flex items-center gap-2 backdrop-blur-sm">
             <span className="material-symbols-outlined text-primary text-sm">stars</span>
             <span className="font-label text-[10px] uppercase tracking-widest text-primary font-bold">Aaj ka Most Important Task</span>
           </div>
-          <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-6 relative z-10">
             {mostImportantTask ? (
               <>
-                <div className="space-y-1">
-                  <h4 className="font-syne font-bold text-xl text-on-surface">{mostImportantTask.title}</h4>
-                  <p className="font-label text-sm text-on-surface-variant flex items-center gap-2">
-                    <span className={`text-${mostImportantTask.color}`}>{mostImportantTask.subject}</span>
-                    <span className="w-1 h-1 rounded-full bg-outline-variant"></span>
-                    <span>Due Today, {mostImportantTask.time}</span>
-                  </p>
+                <div className="space-y-2">
+                  <h4 className="font-syne font-bold text-2xl text-on-surface tracking-tight">{mostImportantTask.title}</h4>
+                  <div className="flex items-center gap-3">
+                    <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-${mostImportantTask.color}/10 text-${mostImportantTask.color} border border-${mostImportantTask.color}/20`}>
+                      {mostImportantTask.subject}
+                    </span>
+                    <span className="font-mono text-xs text-on-surface-variant flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[14px]">schedule</span>
+                      Due Today, {mostImportantTask.time}
+                    </span>
+                  </div>
                 </div>
                 <button 
                   onClick={() => toggleTask(mostImportantTask.id)}
-                  className="bg-tertiary-container text-on-tertiary-container px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                  className="bg-gradient-to-r from-tertiary to-emerald-500 text-black px-6 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-all shadow-[0_0_20px_rgba(56,223,171,0.3)] hover:shadow-[0_0_30px_rgba(56,223,171,0.5)] shrink-0"
                 >
                   <span className="material-symbols-outlined text-[20px]">check_circle</span>
                   Mark Done
                 </button>
               </>
             ) : todaysTasks.length === 0 ? (
-              <div className="flex-1 text-center py-4">
-                <h4 className="font-syne font-bold text-lg text-on-surface-variant">No tasks scheduled for today</h4>
-                <p className="font-label text-sm text-on-surface-variant mt-1">Add some tasks in the Planner to get started.</p>
+              <div className="flex-1 text-center py-8">
+                <div className="w-16 h-16 bg-surface-container-highest rounded-full flex items-center justify-center mx-auto mb-4 border border-white/5">
+                  <span className="material-symbols-outlined text-3xl text-on-surface-variant">event_note</span>
+                </div>
+                <h4 className="font-syne font-bold text-xl text-on-surface">No tasks scheduled for today</h4>
+                <p className="font-label text-sm text-on-surface-variant mt-2">Add some tasks in the Planner to get started.</p>
               </div>
             ) : (
-              <div className="flex-1 text-center py-4">
-                <h4 className="font-syne font-bold text-lg text-on-surface-variant">All tasks completed for today! 🎉</h4>
-                <p className="font-label text-sm text-on-surface-variant mt-1">Take a break or add more tasks in the Planner.</p>
+              <div className="flex-1 text-center py-8">
+                <div className="w-16 h-16 bg-tertiary/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-tertiary/20">
+                  <span className="material-symbols-outlined text-3xl text-tertiary">celebration</span>
+                </div>
+                <h4 className="font-syne font-bold text-xl text-on-surface">All tasks completed for today! 🎉</h4>
+                <p className="font-label text-sm text-on-surface-variant mt-2">Take a break or add more tasks in the Planner.</p>
               </div>
             )}
           </div>
         </section>
 
-        <section className="bg-surface-container-high rounded-2xl p-6 space-y-4">
-          <h3 className="font-label text-xs uppercase tracking-widest text-on-surface-variant">Velocity Check</h3>
-          <div className="flex items-end gap-8 h-24">
-            <div className="flex-1 space-y-2">
-              <div className="h-16 bg-surface-container-lowest rounded-lg relative">
-                <div className="absolute bottom-0 w-full bg-outline-variant/30 rounded-lg" style={{ height: `${Math.min((yesterdayFocusHours / Math.max(yesterdayFocusHours, focusTimeHours, 1)) * 100, 100)}%` }}></div>
-              </div>
+        <section className="bg-gradient-to-br from-surface-container-high to-surface-container-low rounded-3xl p-6 space-y-6 shadow-[0_8px_32px_rgba(0,0,0,0.2)] border border-white/5">
+          <div className="flex items-center justify-between">
+            <h3 className="font-label text-xs uppercase tracking-widest text-on-surface-variant">Velocity Check</h3>
+            <span className="material-symbols-outlined text-on-surface-variant text-sm">speed</span>
+          </div>
+          <div className="flex items-end gap-6 h-32">
+            <div className="flex-1 space-y-3 flex flex-col justify-end h-full">
               <div className="flex justify-between items-center px-1">
-                <span className="font-mono text-[10px] text-on-surface-variant">Yesterday</span>
+                <span className="font-mono text-[10px] text-on-surface-variant uppercase tracking-wider">Yesterday</span>
                 <span className="font-mono text-xs font-bold text-on-surface-variant">{yesterdayFocusHours.toFixed(1)}h</span>
               </div>
-            </div>
-            <div className="flex-1 space-y-2">
-              <div className="h-16 bg-surface-container-lowest rounded-lg relative">
-                <div className="absolute bottom-0 w-full bg-primary rounded-lg neon-glow-primary" style={{ height: `${Math.min((focusTimeHours / Math.max(yesterdayFocusHours, focusTimeHours, 1)) * 100, 100)}%` }}></div>
+              <div className="h-full bg-black/20 rounded-xl relative border border-white/5 overflow-hidden">
+                <motion.div 
+                  initial={{ height: 0 }}
+                  animate={{ height: `${Math.min((yesterdayFocusHours / Math.max(yesterdayFocusHours, focusTimeHours, 1)) * 100, 100)}%` }}
+                  transition={{ duration: 1, ease: "easeOut" }}
+                  className="absolute bottom-0 w-full bg-outline-variant/30 rounded-xl" 
+                />
               </div>
+            </div>
+            <div className="flex-1 space-y-3 flex flex-col justify-end h-full">
               <div className="flex justify-between items-center px-1">
-                <span className="font-mono text-[10px] text-primary">Today</span>
+                <span className="font-mono text-[10px] text-primary uppercase tracking-wider font-bold">Today</span>
                 <span className="font-mono text-xs font-bold text-primary">{focusTimeHours.toFixed(1)}h</span>
+              </div>
+              <div className="h-full bg-black/20 rounded-xl relative border border-white/5 overflow-hidden">
+                <motion.div 
+                  initial={{ height: 0 }}
+                  animate={{ height: `${Math.min((focusTimeHours / Math.max(yesterdayFocusHours, focusTimeHours, 1)) * 100, 100)}%` }}
+                  transition={{ duration: 1, ease: "easeOut", delay: 0.2 }}
+                  className="absolute bottom-0 w-full bg-gradient-to-t from-primary to-blue-400 rounded-xl shadow-[0_0_15px_rgba(79,142,247,0.5)]" 
+                />
               </div>
             </div>
           </div>
@@ -522,8 +581,14 @@ export default function Home() {
 
       {/* Spin Wheel Modal */}
       {showSpinWheel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-surface-container-high rounded-3xl p-6 w-full max-w-sm border border-outline-variant/20 shadow-2xl relative overflow-hidden">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface/80 backdrop-blur-sm"
+          onClick={() => setShowSpinWheel(false)}
+        >
+          <div 
+            className="bg-surface-container-high rounded-3xl p-6 w-full max-w-sm border border-outline-variant/20 shadow-2xl relative overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-primary/5 to-tertiary/5 pointer-events-none"></div>
             <div className="flex justify-between items-center mb-8 relative z-10">
                <h3 className="font-syne font-bold text-2xl bg-gradient-to-r from-primary to-tertiary bg-clip-text text-transparent">Reward Wheel</h3>

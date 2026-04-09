@@ -39,20 +39,22 @@ export default function LiveStudyRoom() {
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 60000);
+    const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  const calculateTime = (startTime: string) => {
-    if (!startTime) return 0;
+  const formatTime = (startTime: string) => {
+    if (!startTime) return "00:00";
     const start = new Date(startTime).getTime();
-    const diff = Math.floor((now - start) / 60000);
-    return diff > 0 ? diff : 0;
+    const diff = Math.max(0, Math.floor((now - start) / 1000));
+    const m = Math.floor(diff / 60).toString().padStart(2, '0');
+    const s = (diff % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
   };
 
   return (
     <div className="bg-surface text-on-surface font-body min-h-screen pb-24">
-      <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl pl-16 pr-6 py-4 border-b border-outline-variant/10">
+      <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-xl pl-16 pr-6 py-4 border-b border-outline-variant/10">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="font-syne font-bold text-2xl text-on-surface">Live Study Room</h1>
@@ -108,10 +110,10 @@ export default function LiveStudyRoom() {
                 
                 <div className="text-right flex-shrink-0">
                   <div className={clsx(
-                    "text-sm font-mono font-bold",
+                    "text-lg font-mono font-bold tracking-wider",
                     student.status === 'focusing' ? "text-primary" : "text-on-surface-variant"
                   )}>
-                    {calculateTime(student.startTime)}m
+                    {formatTime(student.startTime)}
                   </div>
                   <div className="text-[10px] uppercase tracking-wider font-label text-error flex items-center justify-end gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-error animate-pulse"></span>

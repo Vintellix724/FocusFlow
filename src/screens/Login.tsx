@@ -1,26 +1,55 @@
 import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
-import { signInWithGoogle } from '../firebase';
+import { useState, useEffect } from 'react';
+import { signInWithGoogle, checkRedirectResult } from '../firebase';
 import { useStore } from '../context/StoreContext';
+import Logo from '../components/Logo';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { showToast } = useStore();
-  const [isLoading, setIsLoading] = useState(false);
+  const { showToast, firebaseUser, isAuthReady } = useStore();
+  const [isLoading, setIsLoading] = useState(true); // Start loading to check redirect
+
+  useEffect(() => {
+    if (isAuthReady && firebaseUser) {
+      navigate('/home');
+    }
+  }, [isAuthReady, firebaseUser, navigate]);
+
+  useEffect(() => {
+    const checkRedirect = async () => {
+      try {
+        const result = await checkRedirectResult();
+        if (result && result.user) {
+          showToast('Successfully signed in!', 'success');
+          if (result.isNewUser) {
+            navigate('/onboarding');
+          } else {
+            navigate('/home');
+          }
+        }
+      } catch (error: any) {
+        showToast(error.message || 'Failed to sign in via redirect', 'error');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    checkRedirect();
+  }, [navigate, showToast]);
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
-      const { isNewUser } = await signInWithGoogle();
-      showToast('Successfully signed in!', 'success');
-      if (isNewUser) {
-        navigate('/onboarding');
-      } else {
-        navigate('/home');
+      const result = await signInWithGoogle();
+      if (result && result.user) {
+        showToast('Successfully signed in!', 'success');
+        if (result.isNewUser) {
+          navigate('/onboarding');
+        } else {
+          navigate('/home');
+        }
       }
     } catch (error: any) {
       showToast(error.message || 'Failed to sign in', 'error');
-    } finally {
       setIsLoading(false);
     }
   };
@@ -31,9 +60,7 @@ export default function Login() {
 
       <main className="flex-grow flex flex-col items-center justify-center px-6 relative z-10">
         <div className="mb-12 flex flex-col items-center">
-          <div className="w-[60px] h-[60px] bg-gradient-to-br from-primary to-primary-container rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(80,143,248,0.4)] transition-transform duration-300 active:scale-95">
-            <span className="material-symbols-outlined text-on-primary-container text-4xl" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
-          </div>
+          <Logo size="md" animated={true} />
           <span className="mt-4 font-headline font-bold text-2xl tracking-tight bg-gradient-to-br from-blue-300 to-blue-600 bg-clip-text text-transparent">FocusFlow</span>
         </div>
 
@@ -64,19 +91,6 @@ export default function Login() {
                 </svg>
               )}
               <span className="font-headline tracking-tight">{isLoading ? 'Signing in...' : 'Continue with Google'}</span>
-            </button>
-
-            <div className="flex items-center my-8">
-              <div className="flex-grow h-[1px] bg-outline-variant/20"></div>
-              <span className="px-4 font-mono text-[10px] uppercase tracking-[0.2em] text-outline">Performance Auth</span>
-              <div className="flex-grow h-[1px] bg-outline-variant/20"></div>
-            </div>
-
-            <button 
-              onClick={() => showToast("Phone login coming soon!", "info")}
-              className="w-full bg-surface-container-low text-on-surface-variant py-4 px-6 rounded-xl font-medium border border-outline-variant/20 hover:border-primary/40 hover:bg-surface-container-highest transition-all duration-200"
-            >
-              <span className="font-body text-sm">Use Phone Number</span>
             </button>
           </div>
         </div>

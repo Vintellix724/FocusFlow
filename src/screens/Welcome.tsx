@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import Logo from '../components/Logo';
 
 export default function Welcome() {
   const navigate = useNavigate();
@@ -24,29 +25,8 @@ export default function Welcome() {
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-primary/10 blur-[100px] rounded-full"></div>
           <div className="absolute bottom-0 right-0 w-48 h-48 bg-tertiary/10 blur-[80px] rounded-full"></div>
           
-          <div className="relative z-10 w-full max-w-sm aspect-square">
-            <div className="w-full h-full flex items-center justify-center">
-              <div className="relative">
-                <div className="w-48 h-64 bg-gradient-to-t from-surface-container-high to-surface-container-lowest rounded-3xl overflow-hidden border border-outline-variant/20 flex items-center justify-center relative">
-                  <span className="material-symbols-outlined text-8xl text-primary/40" style={{ fontVariationSettings: "'FILL' 1" }}>person</span>
-                  
-                  <div className="absolute top-8 -right-4 w-16 h-16 bg-tertiary-container/30 rounded-xl rotate-12 flex items-center justify-center blur-[1px]">
-                    <span className="material-symbols-outlined text-tertiary text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
-                  </div>
-                  <div className="absolute -top-4 -left-6 w-12 h-12 bg-primary-container/20 rounded-full flex items-center justify-center blur-[1px]">
-                    <span className="material-symbols-outlined text-primary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-                  </div>
-                  <div className="absolute bottom-12 -left-8 w-20 h-20 bg-secondary-container/20 rounded-2xl -rotate-12 flex items-center justify-center blur-[1px]">
-                    <span className="material-symbols-outlined text-secondary text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <img 
-              alt="Student surrounded by glowing books and digital stars" 
-              className="absolute inset-0 w-full h-full object-contain mix-blend-screen opacity-80" 
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuDyvwBeEMgf-8AQ_p3b4p0XaKfOG4JV57rLvUxqs59b86skLpbY1YC34iVrZtE6TARcIOC0B_CqZC_y99_QsOoaXMn5a-Z8otg-iSeVLCzCNJfi8qh7FpYa44KeoEoyAYHUe4okBfEti5uRjZtj47hwTG91jNNFzDrH_vyS3N7tdcnNP58Li16xhcwghsfcXeFZDfCDMvZJn3NTPQv1sXnImWdVNG6T3XouqcAkVw2OydoBNkr0tRDjsH4YKrIQn6FW2rpr1yAOcvId"
-            />
+          <div className="relative z-10 w-full max-w-sm aspect-square flex items-center justify-center">
+            <Logo size="xl" animated={true} />
           </div>
         </div>
 

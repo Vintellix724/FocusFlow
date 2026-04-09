@@ -59,7 +59,7 @@ export default function YouTubeChannels() {
             <div>
               <label className="block font-label text-xs uppercase tracking-wider text-on-surface-variant mb-1">Channel URL</label>
               <input 
-                type="url" 
+                type="text" 
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://youtube.com/..."
