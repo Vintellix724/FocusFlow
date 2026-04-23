@@ -175,7 +175,7 @@ export default function Layout() {
                 <p className="font-body text-sm flex-1">{toast.message}</p>
                 <button 
                   onClick={() => removeToast(toast.id)}
-                  className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-black/10 transition-colors"
+                  className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-on-surface/10 transition-colors"
                 >
                   <span className="material-symbols-outlined text-[16px]">close</span>
                 </button>

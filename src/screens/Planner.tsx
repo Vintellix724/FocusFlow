@@ -3,7 +3,7 @@ import { clsx } from 'clsx';
 import { useStore } from '../context/StoreContext';
 
 export default function Planner() {
-  const { tasks, toggleTask, addTask, deleteTask, editTask, subjects, focusHistory, user, setUser, showToast, journalEntries } = useStore();
+  const { tasks, toggleTask, addTask, deleteTask, editTask, setMostImportantTask, subjects, focusHistory, user, setUser, showToast, journalEntries, topics } = useStore();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [showAddTask, setShowAddTask] = useState(false);
@@ -29,6 +29,7 @@ export default function Planner() {
   const [newTaskTime, setNewTaskTime] = useState('09:00');
   const [newTaskPriority, setNewTaskPriority] = useState<'q1'|'q2'|'q3'|'q4'>('q1');
   const [viewMode, setViewMode] = useState<'list' | 'matrix'>('list');
+  const [isCalendarMinimized, setIsCalendarMinimized] = useState(false);
 
   // Routine state
   const [routineSlots, setRoutineSlots] = useState(user?.studySlots || []);
@@ -99,6 +100,9 @@ export default function Planner() {
   const selectedTasks = tasks.filter(t => t.date === selectedDateStr);
   const selectedFocusTime = focusHistory[selectedDateStr] || 0;
   const selectedJournals = journalEntries ? journalEntries.filter(j => j.date.startsWith(selectedDateStr)) : [];
+  
+  // Find topics updated on this day
+  const topicsWorkedOn = topics.filter(t => t.lastUpdated && t.lastUpdated.startsWith(selectedDateStr));
 
   const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,73 +179,131 @@ export default function Planner() {
           </div>
         </div>
         
-        <div className="bg-surface-container-low rounded-2xl p-4 border border-outline-variant/10 shadow-lg">
-          <div className="flex justify-between items-center mb-4 px-2">
-            <button onClick={handlePrevMonth} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors">
-              <span className="material-symbols-outlined text-on-surface-variant pointer-events-none">chevron_left</span>
-            </button>
-            <span className="font-syne text-lg font-bold text-on-surface">
-              {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-            </span>
-            <button onClick={handleNextMonth} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors">
-              <span className="material-symbols-outlined text-on-surface-variant pointer-events-none">chevron_right</span>
+        <div className="bg-surface-container-low rounded-2xl p-4 border border-outline-variant/10 shadow-lg transition-all duration-300">
+          <div className="flex justify-between items-center mb-2 px-2">
+            <div className="flex items-center gap-4">
+              <button onClick={handlePrevMonth} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors">
+                <span className="material-symbols-outlined text-on-surface-variant pointer-events-none">chevron_left</span>
+              </button>
+              <span className="font-syne text-lg font-bold text-on-surface">
+                {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+              </span>
+              <button onClick={handleNextMonth} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors">
+                <span className="material-symbols-outlined text-on-surface-variant pointer-events-none">chevron_right</span>
+              </button>
+            </div>
+            <button 
+              onClick={() => setIsCalendarMinimized(!isCalendarMinimized)}
+              className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors text-on-surface-variant"
+            >
+              <span className="material-symbols-outlined pointer-events-none">
+                {isCalendarMinimized ? 'expand_more' : 'expand_less'}
+              </span>
             </button>
           </div>
 
-          <div className="grid grid-cols-7 gap-1 mb-2">
-            {days.map(day => (
-              <div key={day} className="text-center font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
-                {day.charAt(0)}
+          {!isCalendarMinimized && (
+            <>
+              <div className="grid grid-cols-7 gap-1 mb-2 mt-4">
+                {days.map(day => (
+                  <div key={day} className="text-center font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                    {day.charAt(0)}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {Array.from({ length: firstDayOfMonth }).map((_, i) => (
-              <div key={`empty-${i}`} className="h-10"></div>
-            ))}
-            {Array.from({ length: daysInMonth }).map((_, i) => {
-              const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i + 1);
-              const dateStr = formatDateLocal(date);
-              const isSelected = date.getDate() === selectedDate.getDate() && date.getMonth() === selectedDate.getMonth() && date.getFullYear() === selectedDate.getFullYear();
-              const isToday = date.getDate() === new Date().getDate() && date.getMonth() === new Date().getMonth() && date.getFullYear() === new Date().getFullYear();
-              const hasTasks = tasks.some(t => t.date === dateStr);
+              <div className="grid grid-cols-7 gap-1">
+                {Array.from({ length: firstDayOfMonth }).map((_, i) => (
+                  <div key={`empty-${i}`} className="h-10"></div>
+                ))}
+                {Array.from({ length: daysInMonth }).map((_, i) => {
+                  const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i + 1);
+                  const dateStr = formatDateLocal(date);
+                  const isSelected = date.getDate() === selectedDate.getDate() && date.getMonth() === selectedDate.getMonth() && date.getFullYear() === selectedDate.getFullYear();
+                  const isToday = date.getDate() === new Date().getDate() && date.getMonth() === new Date().getMonth() && date.getFullYear() === new Date().getFullYear();
+                  const hasTasks = tasks.some(t => t.date === dateStr);
 
-              return (
-                <button
-                  key={i}
-                  onClick={() => setSelectedDate(date)}
-                  className={clsx(
-                    "relative flex flex-col items-center justify-center h-10 rounded-xl transition-all",
-                    isSelected 
-                      ? "bg-primary text-on-primary shadow-[0_4px_12px_rgba(172,199,255,0.3)] scale-105 z-10 font-bold" 
-                      : "hover:bg-surface-container-highest text-on-surface-variant",
-                    isToday && !isSelected ? "border border-tertiary text-tertiary font-bold bg-tertiary/5" : ""
-                  )}
-                >
-                  <span className="font-mono text-sm pointer-events-none">{i + 1}</span>
-                  {hasTasks && !isSelected && (
-                    <span className="absolute bottom-1 w-1 h-1 rounded-full bg-tertiary pointer-events-none"></span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setSelectedDate(date);
+                        setIsCalendarMinimized(true);
+                      }}
+                      className={clsx(
+                        "relative flex flex-col items-center justify-center h-10 rounded-xl transition-all",
+                        isSelected 
+                          ? "bg-primary text-on-primary shadow-[0_4px_12px_rgba(172,199,255,0.3)] scale-105 z-10 font-bold" 
+                          : "hover:bg-surface-container-highest text-on-surface-variant",
+                        isToday && !isSelected ? "border border-tertiary text-tertiary font-bold bg-tertiary/5" : ""
+                      )}
+                    >
+                      <span className="font-mono text-sm pointer-events-none">{i + 1}</span>
+                      {hasTasks && !isSelected && (
+                        <span className="absolute bottom-1 w-1 h-1 rounded-full bg-tertiary pointer-events-none"></span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       </header>
 
       <main className="p-6 space-y-6">
-        <section className="bg-surface-container-high rounded-2xl p-4 border border-outline-variant/10 shadow-sm flex justify-between items-center">
-          <div>
-            <h3 className="font-label text-xs uppercase tracking-widest text-on-surface-variant mb-1">Focus Time</h3>
+        {/* Daily Summary Dashboard */}
+        <section className="grid grid-cols-2 gap-4">
+          <div className="bg-surface-container-high rounded-2xl p-4 border border-outline-variant/10 shadow-sm flex flex-col justify-center">
+            <h3 className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-1">Focus Time</h3>
             <div className="flex items-baseline gap-1">
               <span className="font-mono font-bold text-2xl text-primary">{(selectedFocusTime / 60).toFixed(1)}</span>
               <span className="font-mono text-xs text-on-surface-variant">hrs</span>
             </div>
           </div>
-          <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-            <span className="material-symbols-outlined text-primary">timer</span>
+          <div className="bg-surface-container-high rounded-2xl p-4 border border-outline-variant/10 shadow-sm flex flex-col justify-center">
+            <h3 className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-1">Tasks Done</h3>
+            <div className="flex items-baseline gap-1">
+              <span className="font-mono font-bold text-2xl text-tertiary">{selectedTasks.filter(t => t.completed).length}</span>
+              <span className="font-mono text-xs text-on-surface-variant">/ {selectedTasks.length}</span>
+            </div>
           </div>
         </section>
+
+        {topicsWorkedOn.length > 0 && (
+          <section className="bg-surface-container-high rounded-2xl p-4 border border-outline-variant/10 shadow-sm">
+            <h3 className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-3 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[14px] text-secondary">menu_book</span>
+              Topics Studied
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {topicsWorkedOn.map(topic => (
+                <span key={topic.id} className="bg-surface-container-highest text-on-surface text-xs px-3 py-1.5 rounded-lg border border-outline-variant/20 font-syne">
+                  {topic.title}
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {selectedJournals.length > 0 && (
+          <section className="bg-surface-container-high rounded-2xl p-4 border border-outline-variant/10 shadow-sm">
+            <h3 className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-3 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[14px] text-primary">book</span>
+              Journal Entries
+            </h3>
+            <div className="space-y-3">
+              {selectedJournals.map(journal => (
+                <div key={journal.id} className="bg-surface-container-lowest p-3 rounded-xl border border-outline-variant/10">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">{journal.mood}</span>
+                    <span className="font-mono text-[10px] text-on-surface-variant">{new Date(journal.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                  </div>
+                  <p className="text-sm text-on-surface font-body">{journal.text}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section>
           <div className="flex justify-between items-center mb-4">
@@ -306,10 +368,23 @@ export default function Planner() {
                         </button>
                         
                         <div className={clsx(
-                          "w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-surface-container-high p-4 rounded-2xl border border-outline-variant/10 hover:border-outline-variant/30 transition-all relative group/card",
-                          task.completed ? "opacity-60" : "shadow-md"
+                          "w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-surface-container-high p-4 rounded-2xl border transition-all relative group/card",
+                          task.completed ? "opacity-60 border-outline-variant/10" : "shadow-md hover:border-outline-variant/30",
+                          task.isMostImportant && !task.completed ? "border-primary/50 shadow-[0_0_15px_rgba(var(--color-primary),0.1)]" : "border-outline-variant/10"
                         )}>
                           <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                            {!task.completed && (
+                              <button 
+                                onClick={() => setMostImportantTask(task.id, selectedDateStr)}
+                                className={clsx(
+                                  "w-8 h-8 rounded-full flex items-center justify-center transition-colors",
+                                  task.isMostImportant ? "bg-primary/20 text-primary" : "bg-surface-container-highest text-on-surface-variant hover:bg-primary/10 hover:text-primary"
+                                )}
+                                title="Set as Most Important Task"
+                              >
+                                <span className="material-symbols-outlined text-[16px] pointer-events-none" style={{ fontVariationSettings: task.isMostImportant ? "'FILL' 1" : "'FILL' 0" }}>star</span>
+                              </button>
+                            )}
                             <button 
                               onClick={() => openEditModal(task)}
                               className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/20"
@@ -446,7 +521,8 @@ export default function Planner() {
                       quadrant.tasks.map(task => (
                         <div key={task.id} className={clsx(
                           "p-2 rounded-lg border text-xs flex items-center justify-between group",
-                          task.completed ? "bg-surface-container border-outline-variant/10 opacity-50" : "bg-surface border-outline-variant/20 shadow-sm"
+                          task.completed ? "bg-surface-container border-outline-variant/10 opacity-50" : "bg-surface border-outline-variant/20 shadow-sm",
+                          task.isMostImportant && !task.completed && "border-primary/50 shadow-[0_0_10px_rgba(var(--color-primary),0.1)]"
                         )}>
                           <div className="flex items-center gap-2 overflow-hidden">
                             <button onClick={() => toggleTask(task.id)} className="shrink-0">
@@ -456,9 +532,22 @@ export default function Planner() {
                             </button>
                             <span className={clsx("truncate", task.completed && "line-through")}>{task.title}</span>
                           </div>
-                          <button onClick={() => openEditModal(task)} className="opacity-0 group-hover:opacity-100 shrink-0 text-on-surface-variant hover:text-primary transition-opacity">
-                            <span className="material-symbols-outlined text-[14px] pointer-events-none">edit</span>
-                          </button>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {!task.completed && (
+                              <button 
+                                onClick={() => setMostImportantTask(task.id, selectedDateStr)}
+                                className={clsx(
+                                  "shrink-0 transition-colors",
+                                  task.isMostImportant ? "text-primary" : "text-on-surface-variant hover:text-primary"
+                                )}
+                              >
+                                <span className="material-symbols-outlined text-[14px] pointer-events-none" style={{ fontVariationSettings: task.isMostImportant ? "'FILL' 1" : "'FILL' 0" }}>star</span>
+                              </button>
+                            )}
+                            <button onClick={() => openEditModal(task)} className="shrink-0 text-on-surface-variant hover:text-primary transition-opacity">
+                              <span className="material-symbols-outlined text-[14px] pointer-events-none">edit</span>
+                            </button>
+                          </div>
                         </div>
                       ))
                     )}
@@ -495,7 +584,7 @@ export default function Planner() {
 
       {showRoutineModal && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface/80 backdrop-blur-sm"
           onClick={() => setShowRoutineModal(false)}
         >
           <div 
@@ -579,7 +668,7 @@ export default function Planner() {
 
       {showAddTask && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface/80 backdrop-blur-sm"
           onClick={closeAddTaskModal}
         >
           <div 

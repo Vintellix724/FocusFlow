@@ -13,6 +13,7 @@ export default function MockTests() {
   const [selectedTest, setSelectedTest] = useState<MockTest | null>(null);
   const [showResultModal, setShowResultModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'tests' | 'analytics'>('tests');
+  const [previewFile, setPreviewFile] = useState<{ blob: Blob, name: string, type: string } | null>(null);
 
   // Form states
   const [title, setTitle] = useState('');
@@ -30,6 +31,8 @@ export default function MockTests() {
   const [incorrectAnswers, setIncorrectAnswers] = useState(0);
   const [marksObtained, setMarksObtained] = useState(0);
   const [timeTaken, setTimeTaken] = useState(0);
+
+  const [testToDelete, setTestToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     loadTests();
@@ -97,15 +100,16 @@ export default function MockTests() {
     setSyllabusFile(null);
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this test?")) {
-      try {
-        await deleteMockTest(id);
-        showToast("Test deleted", "info");
-        loadTests();
-      } catch (error) {
-        showToast("Failed to delete test", "error");
-      }
+  const confirmDelete = async () => {
+    if (!testToDelete) return;
+    try {
+      await deleteMockTest(testToDelete);
+      showToast("Test deleted", "info");
+      loadTests();
+    } catch (error) {
+      showToast("Failed to delete test", "error");
+    } finally {
+      setTestToDelete(null);
     }
   };
 
@@ -138,6 +142,14 @@ export default function MockTests() {
     } catch (error) {
       showToast("Failed to save results", "error");
     }
+  };
+
+  const openPreview = (blob: Blob | null | undefined, filename: string | undefined) => {
+    if (!blob || !filename) {
+      showToast("File not available", "error");
+      return;
+    }
+    setPreviewFile({ blob, name: filename, type: blob.type });
   };
 
   const downloadFile = (blob: Blob | null | undefined, filename: string | undefined) => {
@@ -277,7 +289,7 @@ export default function MockTests() {
                     </p>
                   </div>
                   <button 
-                    onClick={() => handleDelete(test.id)}
+                    onClick={() => setTestToDelete(test.id)}
                     className="w-8 h-8 rounded-full bg-error/10 text-error flex items-center justify-center hover:bg-error/20 transition-colors"
                   >
                     <span className="material-symbols-outlined text-sm">delete</span>
@@ -286,17 +298,17 @@ export default function MockTests() {
 
                 <div className="flex flex-wrap gap-2 mb-4">
                   {test.questionPaperName && (
-                    <button onClick={() => downloadFile(test.questionPaperFile, test.questionPaperName)} className="bg-surface-variant text-on-surface-variant text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-surface-variant/80">
+                    <button onClick={() => openPreview(test.questionPaperFile, test.questionPaperName)} className="bg-surface-variant text-on-surface-variant text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-surface-variant/80">
                       <span className="material-symbols-outlined text-[14px]">description</span> Paper
                     </button>
                   )}
                   {test.answerKeyName && (
-                    <button onClick={() => downloadFile(test.answerKeyFile, test.answerKeyName)} className="bg-surface-variant text-on-surface-variant text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-surface-variant/80">
+                    <button onClick={() => openPreview(test.answerKeyFile, test.answerKeyName)} className="bg-surface-variant text-on-surface-variant text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-surface-variant/80">
                       <span className="material-symbols-outlined text-[14px]">key</span> Key
                     </button>
                   )}
                   {test.syllabusName && (
-                    <button onClick={() => downloadFile(test.syllabusFile, test.syllabusName)} className="bg-surface-variant text-on-surface-variant text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-surface-variant/80">
+                    <button onClick={() => openPreview(test.syllabusFile, test.syllabusName)} className="bg-surface-variant text-on-surface-variant text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-surface-variant/80">
                       <span className="material-symbols-outlined text-[14px]">menu_book</span> Syllabus
                     </button>
                   )}
@@ -578,7 +590,7 @@ export default function MockTests() {
               <h2 className="font-syne font-bold text-2xl text-on-surface mb-2 shrink-0">Add Results</h2>
               <p className="text-sm text-on-surface-variant mb-6 shrink-0">{selectedTest.title}</p>
               
-              <form onSubmit={handleSaveResult} className="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-2 pb-2">
+              <form onSubmit={handleSaveResult} className="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-2 pb-24 sm:pb-2">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block font-label text-xs uppercase tracking-wider text-on-surface-variant mb-1">Correct Ans</label>
@@ -641,6 +653,104 @@ export default function MockTests() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {testToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setTestToDelete(null)}></div>
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-surface w-full max-w-sm rounded-3xl p-6 shadow-xl relative z-10 flex flex-col items-center text-center"
+            >
+              <div className="w-16 h-16 bg-error/10 text-error rounded-full flex items-center justify-center mb-4">
+                <span className="material-symbols-outlined text-3xl">warning</span>
+              </div>
+              <h2 className="font-syne font-bold text-2xl text-on-surface mb-2">Delete Test?</h2>
+              <p className="text-on-surface-variant mb-6">
+                Are you sure you want to delete this mock test? This action cannot be undone.
+              </p>
+              <div className="flex gap-3 w-full">
+                <button 
+                  onClick={() => setTestToDelete(null)}
+                  className="flex-1 py-3 rounded-xl font-bold text-on-surface-variant bg-surface-container hover:bg-surface-container-highest transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmDelete}
+                  className="flex-1 py-3 rounded-xl font-bold text-white bg-error hover:bg-error/90 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* File Preview Modal */}
+      <AnimatePresence>
+        {previewFile && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setPreviewFile(null)}></div>
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-surface w-full max-w-4xl rounded-3xl p-4 sm:p-6 shadow-xl relative z-10 flex flex-col h-[90dvh]"
+            >
+              <div className="flex justify-between items-center mb-4 shrink-0">
+                <h2 className="font-syne font-bold text-xl text-on-surface truncate pr-4">{previewFile.name}</h2>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => downloadFile(previewFile.blob, previewFile.name)}
+                    className="bg-primary text-on-primary px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-primary/90 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">download</span>
+                    <span className="hidden sm:inline">Download</span>
+                  </button>
+                  <button 
+                    onClick={() => setPreviewFile(null)}
+                    className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-on-surface-variant hover:bg-surface-container-highest transition-colors"
+                  >
+                    <span className="material-symbols-outlined">close</span>
+                  </button>
+                </div>
+              </div>
+              
+              <div className="flex-1 bg-surface-container-lowest rounded-2xl overflow-hidden border border-outline-variant/20 relative">
+                {previewFile.type.startsWith('image/') ? (
+                  <img 
+                    src={URL.createObjectURL(previewFile.blob)} 
+                    alt={previewFile.name}
+                    className="w-full h-full object-contain"
+                  />
+                ) : previewFile.type === 'application/pdf' ? (
+                  <iframe 
+                    src={URL.createObjectURL(previewFile.blob)} 
+                    className="w-full h-full border-0"
+                    title={previewFile.name}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-on-surface-variant p-6 text-center">
+                    <span className="material-symbols-outlined text-6xl mb-4 opacity-50">description</span>
+                    <p className="mb-4">Preview not available for this file type.</p>
+                    <button 
+                      onClick={() => downloadFile(previewFile.blob, previewFile.name)}
+                      className="bg-primary text-on-primary px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-primary/90 transition-colors"
+                    >
+                      <span className="material-symbols-outlined">download</span>
+                      Download File
+                    </button>
+                  </div>
+                )}
+              </div>
             </motion.div>
           </div>
         )}

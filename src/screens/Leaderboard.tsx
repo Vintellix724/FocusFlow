@@ -11,10 +11,11 @@ export default function Leaderboard() {
   useEffect(() => {
     const fetchLeaders = async () => {
       try {
-        const usersCollection = collection(db, 'users');
-        const q = query(usersCollection, orderBy('totalFocusMinutes', 'desc'), limit(50));
+        const leaderboardCollection = collection(db, 'leaderboard');
+        const q = query(leaderboardCollection, orderBy('totalFocusMinutes', 'desc'), limit(50));
         const usersSnapshot = await getDocs(q);
-        const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+        
         setLeaders(usersList);
       } catch (error) {
         console.error("Error fetching leaderboard:", error);
@@ -92,8 +93,12 @@ export default function Leaderboard() {
             ))}
             
             {leaders.length === 0 && (
-              <div className="text-center py-8 text-on-surface-variant">
-                No students found on the leaderboard yet.
+              <div className="text-center py-12 flex flex-col items-center justify-center bg-surface-container-lowest rounded-xl border border-dashed border-outline-variant/20">
+                <span className="material-symbols-outlined text-6xl text-on-surface-variant/30 mb-4">social_leaderboard</span>
+                <h3 className="font-syne font-bold text-lg text-on-surface mb-2">No Students Yet</h3>
+                <p className="text-sm text-on-surface-variant max-w-xs">
+                  Be the first one to start studying and claim the top spot on the leaderboard!
+                </p>
               </div>
             )}
           </div>

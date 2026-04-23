@@ -1,11 +1,45 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { clsx } from 'clsx';
 import { useStore } from '../context/StoreContext';
 
 export default function Subjects() {
-  const { user, subjects, addSubject, deleteSubject, topics, addTopic, deleteTopic, toggleTopicStatus, showToast } = useStore();
+  const { user, subjects, addSubject, deleteSubject, topics, addTopic, deleteTopic, toggleTopicStatus, reviewTopic, addSubTopic, deleteSubTopic, reviewSubTopic, showToast } = useStore();
   const [activeTab, setActiveTab] = useState<string>('all');
   
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [isCalendarMinimized, setIsCalendarMinimized] = useState(true);
+
+  const formatDateLocal = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const selectedDateStr = formatDateLocal(selectedDate);
+  const filteredTopics = topics.filter(t => !t.date || t.date === selectedDateStr);
+
+  const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
+  const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
+  
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+  const handlePrevMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+  };
+
+  const jumpToToday = () => {
+    const today = new Date();
+    setSelectedDate(today);
+    setCurrentMonth(today);
+  };
+
   const [showAddSubject, setShowAddSubject] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState('');
   const [newSubjectColor, setNewSubjectColor] = useState('primary');
@@ -16,7 +50,14 @@ export default function Subjects() {
   const [newTopicSubject, setNewTopicSubject] = useState(subjects[0]?.id || '');
   const [newTopicTarget, setNewTopicTarget] = useState(1); // in hours
 
+  const [showAddSubTopic, setShowAddSubTopic] = useState(false);
+  const [newSubTopicTitle, setNewSubTopicTitle] = useState('');
+  const [newSubTopicParentId, setNewSubTopicParentId] = useState('');
+
+  const [newSubTopicTarget, setNewSubTopicTarget] = useState(0); // in minutes, optional
+
   const [subjectToDelete, setSubjectToDelete] = useState<{id: string, name: string} | null>(null);
+  const [topicToReview, setTopicToReview] = useState<{id: string, title: string, isSubTopic?: boolean, parentId?: string} | null>(null);
 
   const handleAddSubject = (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,18 +83,54 @@ export default function Subjects() {
     showToast(`Subject "${newSubjectName}" added`, 'success');
   };
 
+  const handleTopicClick = (topic: any, isSubTopic = false, parentId?: string) => {
+    if (topic.status === 'Completed') {
+      // If already completed, just toggle back to in-progress
+      if (isSubTopic && parentId) {
+        showToast("Sub-topic already completed", "info");
+      } else {
+        toggleTopicStatus(topic.id);
+      }
+    } else {
+      // If completing it, prompt for review rating
+      setTopicToReview({ id: topic.id, title: topic.title, isSubTopic, parentId });
+    }
+  };
+
+  const handleReviewSubmit = (rating: 'Hard' | 'Good' | 'Easy') => {
+    if (topicToReview) {
+      if (topicToReview.isSubTopic && topicToReview.parentId) {
+        reviewSubTopic(topicToReview.parentId, topicToReview.id, rating);
+      } else {
+        reviewTopic(topicToReview.id, rating);
+      }
+      setTopicToReview(null);
+    }
+  };
+
+  const handleAddSubTopic = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSubTopicTitle.trim() || !newSubTopicParentId) return;
+    addSubTopic(newSubTopicParentId, newSubTopicTitle, newSubTopicTarget > 0 ? newSubTopicTarget : undefined);
+    setNewSubTopicTitle('');
+    setNewSubTopicTarget(0);
+    setShowAddSubTopic(false);
+    showToast(`Sub-topic added`, 'success');
+  };
+
   const handleAddTopic = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTopicTitle.trim() || !newTopicSubject) return;
     addTopic({
       title: newTopicTitle,
       subjectId: newTopicSubject,
-      targetMinutes: newTopicTarget * 60
+      targetMinutes: newTopicTarget * 60,
+      date: selectedDateStr
     });
     setNewTopicTitle('');
     setNewTopicTarget(2);
     setShowAddTopic(false);
-    showToast(`Topic "${newTopicTitle}" added`, 'success');
+    showToast(`Topic "${newTopicTitle}" added for ${selectedDate.toLocaleDateString()}`, 'success');
   };
 
   const handleDeleteSubject = (id: string, name: string) => {
@@ -70,17 +147,16 @@ export default function Subjects() {
   };
 
   const getSubjectStats = (subjectId: string) => {
-    const subjectTopics = topics.filter(t => t.subjectId === subjectId);
-    const totalTopics = subjectTopics.length;
-    const completedTopics = subjectTopics.filter(t => t.status === 'Completed').length;
+    const dailyTopics = filteredTopics.filter(t => t.subjectId === subjectId);
+    const totalTopics = dailyTopics.length;
+    const completedTopics = dailyTopics.filter(t => t.status === 'Completed').length;
     
     const subject = subjects.find(s => s.id === subjectId);
     
-    // Calculate time spent: use subject.timeSpent if available, otherwise fallback to sum of topics
-    // If subject.timeSpent exists, it might be higher than topics sum if they studied without a topic
-    // But if we just added this feature, we should ensure it's at least the sum of topics
-    const topicsTimeSpent = subjectTopics.reduce((acc, t) => acc + t.timeSpent, 0);
-    const timeSpent = Math.max(subject?.timeSpent || 0, topicsTimeSpent);
+    // Calculate global time spent for the top-level subject progress
+    const allSubjectTopics = topics.filter(t => t.subjectId === subjectId);
+    const allTopicsTimeSpent = allSubjectTopics.reduce((acc, t) => acc + t.timeSpent, 0);
+    const timeSpent = Math.max(subject?.timeSpent || 0, allTopicsTimeSpent);
     
     const targetMinutes = subject?.targetMinutes || 1;
     const progress = Math.min(100, Math.round((timeSpent / targetMinutes) * 100));
@@ -99,6 +175,87 @@ export default function Subjects() {
       <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-xl pl-16 pr-6 py-4 border-b border-outline-variant/10">
         <div className="flex justify-between items-center mb-4">
           <h1 className="font-syne font-bold text-2xl text-on-surface">Subjects</h1>
+        </div>
+        
+        {/* Date Selector Strip (Calendarized) */}
+        <div className="bg-surface-container-low rounded-2xl p-4 border border-outline-variant/10 shadow-sm transition-all duration-300 mb-4">
+          <div className="flex justify-between items-center px-1">
+            <div className="flex items-center gap-2">
+              <button onClick={handlePrevMonth} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors">
+                <span className="material-symbols-outlined text-on-surface-variant text-sm pointer-events-none">chevron_left</span>
+              </button>
+              <span className="font-syne text-sm font-bold text-on-surface w-28 text-center border px-2 py-1 rounded bg-surface-container-highest/50 border-outline-variant/10">
+                {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+              </span>
+              <button onClick={handleNextMonth} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors">
+                <span className="material-symbols-outlined text-on-surface-variant text-sm pointer-events-none">chevron_right</span>
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={jumpToToday}
+                className="bg-primary/10 text-primary px-3 py-1.5 rounded-lg font-label text-xs uppercase tracking-widest hover:bg-primary/20 transition-colors"
+              >
+                Today
+              </button>
+              <button 
+                onClick={() => setIsCalendarMinimized(!isCalendarMinimized)}
+                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-container-highest transition-colors text-on-surface-variant"
+              >
+                <span className="material-symbols-outlined pointer-events-none">
+                  {isCalendarMinimized ? 'expand_more' : 'expand_less'}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {!isCalendarMinimized && (
+            <>
+              <div className="grid grid-cols-7 gap-1 mb-2 mt-4">
+                {days.map(day => (
+                  <div key={day} className="text-center font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                    {day.charAt(0)}
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {Array.from({ length: firstDayOfMonth }).map((_, i) => (
+                  <div key={`empty-${i}`} className="h-8"></div>
+                ))}
+                {Array.from({ length: daysInMonth }).map((_, i) => {
+                  const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i + 1);
+                  const isSelected = date.getDate() === selectedDate.getDate() && date.getMonth() === selectedDate.getMonth() && date.getFullYear() === selectedDate.getFullYear();
+                  const isToday = date.getDate() === new Date().getDate() && date.getMonth() === new Date().getMonth() && date.getFullYear() === new Date().getFullYear();
+
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setSelectedDate(date);
+                        setIsCalendarMinimized(true);
+                      }}
+                      className={clsx(
+                        "relative flex flex-col items-center justify-center h-8 rounded-lg transition-all",
+                        isSelected 
+                          ? "bg-primary text-on-primary shadow-sm font-bold" 
+                          : "hover:bg-surface-container-highest text-on-surface-variant",
+                        isToday && !isSelected ? "border border-tertiary text-tertiary font-bold bg-tertiary/5" : ""
+                      )}
+                    >
+                      <span className="font-mono text-xs pointer-events-none">{i + 1}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {isCalendarMinimized && (
+             <div className="mt-4 text-center text-sm font-syne font-bold text-primary flex items-center justify-center gap-2">
+                <span className="material-symbols-outlined text-[16px]">calendar_today</span>
+                <span>{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</span>
+             </div>
+          )}
         </div>
         
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
@@ -134,29 +291,14 @@ export default function Subjects() {
         <div className="flex gap-3 mb-6">
           <button 
             onClick={() => setShowAddSubject(true)}
-            className="flex-1 bg-surface-container-high border border-outline-variant/20 py-3 rounded-xl flex items-center justify-center gap-2 text-primary font-bold hover:bg-surface-container-highest transition-colors shadow-sm"
+            className="w-full bg-primary text-on-primary py-3 rounded-xl flex items-center justify-center gap-2 font-bold hover:bg-primary/90 transition-colors shadow-sm"
           >
             <span className="material-symbols-outlined">add_circle</span>
-            Add Subject
-          </button>
-          <button 
-            onClick={() => {
-              if (subjects.length === 0) {
-                showToast("Please add a subject first", "error");
-                setShowAddSubject(true);
-              } else {
-                setNewTopicSubject(activeTab !== 'all' ? activeTab : subjects[0].id);
-                setShowAddTopic(true);
-              }
-            }}
-            className="flex-1 bg-primary text-on-primary py-3 rounded-xl flex items-center justify-center gap-2 font-bold hover:bg-primary/90 transition-colors shadow-sm"
-          >
-            <span className="material-symbols-outlined">post_add</span>
-            Add Topic
+            Add New Subject
           </button>
         </div>
 
-        <div className="grid gap-4">
+        <div className="grid gap-6">
           {subjects.filter(s => activeTab === 'all' || s.id === activeTab).map((subject) => {
             const stats = getSubjectStats(subject.id);
             return (
@@ -216,6 +358,137 @@ export default function Subjects() {
                     ></div>
                   </div>
                 </div>
+
+                {/* Topics Hierarchy */}
+                <div className="mt-6 space-y-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-label text-xs uppercase tracking-widest text-on-surface-variant flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[14px]">account_tree</span>
+                      Topics & Chapters
+                    </h4>
+                    <button 
+                      onClick={() => {
+                        setNewTopicSubject(subject.id);
+                        setShowAddTopic(true);
+                      }}
+                      className={clsx(
+                        "text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md transition-colors",
+                        `bg-${subject.color}/10 text-${subject.color} hover:bg-${subject.color}/20`
+                      )}
+                    >
+                      + Add Topic
+                    </button>
+                  </div>
+
+                  {filteredTopics.filter(t => t.subjectId === subject.id).map((topic) => (
+                    <div key={topic.id} className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 overflow-hidden">
+                      <div className="p-3 flex items-center justify-between hover:bg-surface-container-low transition-colors">
+                        <div className="flex items-center gap-3 flex-grow">
+                          <button 
+                            onClick={() => handleTopicClick(topic)}
+                            disabled={topic.subTopics && topic.subTopics.length > 0}
+                            className={clsx(
+                              "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0",
+                              topic.status === 'Completed' ? `bg-${subject.color} border-${subject.color}` : "border-outline-variant/50 hover:border-outline",
+                              topic.subTopics && topic.subTopics.length > 0 && "opacity-50 cursor-not-allowed"
+                            )}
+                          >
+                            {topic.status === 'Completed' && <span className={clsx("material-symbols-outlined text-[14px] font-bold", `text-on-${subject.color}`)}>check</span>}
+                          </button>
+                          <div className="flex-grow">
+                            <h4 className={clsx("font-syne font-bold text-sm transition-all", topic.status === 'Completed' && "line-through text-on-surface-variant")}>{topic.title}</h4>
+                            <p className="font-mono text-[10px] text-on-surface-variant uppercase">
+                              {formatTime(topic.timeSpent)} / {formatTime(topic.targetMinutes)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {topic.nextReviewDate && new Date(topic.nextReviewDate) <= new Date() && (!topic.subTopics || topic.subTopics.length === 0) && (
+                            <span className="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-error/10 text-error border border-error/20 flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[12px]">refresh</span>
+                              Review
+                            </span>
+                          )}
+                          <span className={clsx(
+                            "font-label text-[10px] uppercase px-2 py-1 rounded-md border hidden sm:inline-block",
+                            topic.status === 'Completed' ? 'bg-tertiary/10 text-tertiary border-tertiary/20' : 
+                            topic.status === 'In Progress' ? 'bg-primary/10 text-primary border-primary/20' : 
+                            'bg-surface-container-highest text-on-surface-variant border-outline-variant/20'
+                          )}>
+                            {topic.status}
+                          </span>
+                          <button 
+                            onClick={() => {
+                              setNewSubTopicParentId(topic.id);
+                              setShowAddSubTopic(true);
+                            }}
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-primary/10 transition-colors"
+                            title="Add Sub-topic"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">add</span>
+                          </button>
+                          <button 
+                            onClick={() => deleteTopic(topic.id)}
+                            className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-error/10 hover:text-error transition-colors text-on-surface-variant"
+                          >
+                            <span className="material-symbols-outlined text-sm">delete</span>
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {/* Subtopics List */}
+                      {topic.subTopics && topic.subTopics.length > 0 && (
+                        <div className="bg-surface-container-high border-t border-outline-variant/10 p-3 pl-12 space-y-2">
+                          {topic.subTopics.map(subTopic => (
+                            <div key={subTopic.id} className="flex items-center justify-between group">
+                              <div className="flex items-center gap-3">
+                                <button 
+                                  onClick={() => handleTopicClick(subTopic, true, topic.id)}
+                                  className={clsx(
+                                    "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0",
+                                    subTopic.status === 'Completed' ? `bg-${subject.color} border-${subject.color}` : "border-outline-variant/50 hover:border-outline"
+                                  )}
+                                >
+                                  {subTopic.status === 'Completed' && <span className={clsx("material-symbols-outlined text-[12px] font-bold", `text-on-${subject.color}`)}>check</span>}
+                                </button>
+                                <div className="flex items-center flex-wrap gap-2">
+                                  <span className={clsx("font-syne text-sm", subTopic.status === 'Completed' && "line-through text-on-surface-variant")}>
+                                    {subTopic.title}
+                                  </span>
+                                  {subTopic.targetMinutes ? (
+                                    <span className="font-mono text-[10px] text-on-surface-variant bg-surface-container-highest px-2 py-0.5 rounded-md border border-outline-variant/10">
+                                      {formatTime(subTopic.timeSpent || 0)} / {formatTime(subTopic.targetMinutes)}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {subTopic.nextReviewDate && new Date(subTopic.nextReviewDate) <= new Date() && (
+                                  <span className="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-error/10 text-error border border-error/20 flex items-center gap-1">
+                                    <span className="material-symbols-outlined text-[10px]">refresh</span>
+                                    Review
+                                  </span>
+                                )}
+                                <button 
+                                  onClick={() => deleteSubTopic(topic.id, subTopic.id)}
+                                  className="w-6 h-6 rounded-full flex items-center justify-center text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors"
+                                  title="Delete Sub-topic"
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">close</span>
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {filteredTopics.filter(t => t.subjectId === subject.id).length === 0 && (
+                    <div className="text-center py-4 text-on-surface-variant text-sm border border-dashed border-outline-variant/20 rounded-xl">
+                      No topics added yet.
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -226,62 +499,6 @@ export default function Subjects() {
             </div>
           )}
         </div>
-
-        <section className="mt-8">
-          <h2 className="font-label text-sm uppercase tracking-widest text-on-surface-variant mb-4 flex items-center gap-2">
-            <span className="material-symbols-outlined text-sm">format_list_bulleted</span>
-            Topics & Chapters
-          </h2>
-          <div className="space-y-3">
-            {topics.filter(t => activeTab === 'all' || t.subjectId === activeTab).map((topic) => {
-              const subject = subjects.find(s => s.id === topic.subjectId);
-              if (!subject) return null;
-              
-              return (
-                <div key={topic.id} className="bg-surface-container-low p-4 rounded-xl flex items-center justify-between border border-outline-variant/10 hover:bg-surface-container-high transition-colors">
-                  <div className="flex items-center gap-3 flex-grow">
-                    <button 
-                      onClick={() => toggleTopicStatus(topic.id)}
-                      className={clsx(
-                        "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0",
-                        topic.status === 'Completed' ? `bg-${subject.color} border-${subject.color}` : "border-outline-variant/50 hover:border-outline"
-                      )}
-                    >
-                      {topic.status === 'Completed' && <span className={clsx("material-symbols-outlined text-[14px] font-bold", `text-on-${subject.color}`)}>check</span>}
-                    </button>
-                    <div className="flex-grow">
-                      <h4 className={clsx("font-syne font-bold text-sm transition-all", topic.status === 'Completed' && "line-through text-on-surface-variant")}>{topic.title}</h4>
-                      <p className="font-mono text-[10px] text-on-surface-variant uppercase">
-                        {subject.name} • {formatTime(topic.timeSpent)} / {formatTime(topic.targetMinutes)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={clsx(
-                      "font-label text-[10px] uppercase px-2 py-1 rounded-md border hidden sm:inline-block",
-                      topic.status === 'Completed' ? 'bg-tertiary/10 text-tertiary border-tertiary/20' : 
-                      topic.status === 'In Progress' ? 'bg-primary/10 text-primary border-primary/20' : 
-                      'bg-surface-container-highest text-on-surface-variant border-outline-variant/20'
-                    )}>
-                      {topic.status}
-                    </span>
-                    <button 
-                      onClick={() => deleteTopic(topic.id)}
-                      className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-error/10 hover:text-error transition-colors text-on-surface-variant"
-                    >
-                      <span className="material-symbols-outlined text-sm">delete</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-            {topics.filter(t => activeTab === 'all' || t.subjectId === activeTab).length === 0 && (
-              <div className="text-center py-8 text-on-surface-variant bg-surface-container-low rounded-xl border border-outline-variant/10">
-                <p>No topics found. Add a chapter or subtopic!</p>
-              </div>
-            )}
-          </div>
-        </section>
       </main>
 
       {/* Add Subject Modal */}
@@ -343,6 +560,93 @@ export default function Subjects() {
               </div>
               <button type="submit" className="w-full bg-primary text-on-primary font-bold py-4 rounded-xl mt-4 hover:bg-primary/90 transition-colors">
                 Add Subject
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Review Topic Modal */}
+      {topicToReview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-surface/80 backdrop-blur-sm" onClick={() => setTopicToReview(null)}></div>
+          <div className="bg-surface-container-high rounded-3xl p-6 w-full max-w-sm border border-outline-variant/20 shadow-2xl relative z-10">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-syne font-bold text-xl text-on-surface">Rate Difficulty</h3>
+              <button onClick={() => setTopicToReview(null)} className="text-on-surface-variant hover:text-on-surface">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <p className="text-sm text-on-surface-variant mb-6">
+              How well did you understand <strong>{topicToReview.title}</strong>? This helps us schedule your next review.
+            </p>
+            <div className="space-y-3">
+              <button 
+                onClick={() => handleReviewSubmit('Hard')}
+                className="w-full py-4 rounded-xl font-bold text-error bg-error/10 hover:bg-error/20 transition-colors flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined">sentiment_dissatisfied</span>
+                Hard (Review Tomorrow)
+              </button>
+              <button 
+                onClick={() => handleReviewSubmit('Good')}
+                className="w-full py-4 rounded-xl font-bold text-primary bg-primary/10 hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined">sentiment_satisfied</span>
+                Good (Review in a few days)
+              </button>
+              <button 
+                onClick={() => handleReviewSubmit('Easy')}
+                className="w-full py-4 rounded-xl font-bold text-success bg-success/10 hover:bg-success/20 transition-colors flex items-center justify-center gap-2"
+              >
+                <span className="material-symbols-outlined">sentiment_very_satisfied</span>
+                Easy (Review next week)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Sub-topic Modal */}
+      {showAddSubTopic && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-surface/80 backdrop-blur-sm" onClick={() => setShowAddSubTopic(false)}></div>
+          <div className="bg-surface-container-high rounded-3xl p-6 w-full max-w-md border border-outline-variant/20 shadow-2xl relative z-10">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-syne font-bold text-xl text-on-surface">Add Sub-topic</h3>
+              <button onClick={() => setShowAddSubTopic(false)} className="text-on-surface-variant hover:text-on-surface">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <form onSubmit={handleAddSubTopic} className="space-y-4">
+              <div>
+                <label className="block font-label text-xs uppercase tracking-widest text-on-surface-variant mb-2">Sub-topic Title</label>
+                <input 
+                  type="text" 
+                  value={newSubTopicTitle}
+                  onChange={(e) => setNewSubTopicTitle(e.target.value)}
+                  className="w-full bg-surface-container-highest border-none rounded-xl p-4 text-on-surface font-syne focus:ring-2 focus:ring-primary outline-none"
+                  placeholder="e.g. Newton's First Law"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block font-label text-xs uppercase tracking-widest text-on-surface-variant mb-2">Target Time (Minutes) - Optional</label>
+                <input 
+                  type="number" 
+                  min="0"
+                  value={newSubTopicTarget || ''}
+                  onChange={(e) => setNewSubTopicTarget(parseInt(e.target.value) || 0)}
+                  className="w-full bg-surface-container-highest border-none rounded-xl p-4 text-on-surface font-syne focus:ring-2 focus:ring-primary outline-none"
+                  placeholder="e.g. 30"
+                />
+              </div>
+              <button 
+                type="submit"
+                disabled={!newSubTopicTitle.trim()}
+                className="w-full bg-primary text-on-primary py-4 rounded-xl font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Add Sub-topic
               </button>
             </form>
           </div>

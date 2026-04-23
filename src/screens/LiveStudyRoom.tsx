@@ -88,7 +88,7 @@ export default function LiveStudyRoom() {
               >
                 <div className="relative">
                   <div className={clsx(
-                    "w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold text-white",
+                    "w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold text-on-primary",
                     student.status === 'focusing' ? "bg-primary" : "bg-surface-variant text-on-surface-variant"
                   )}>
                     {student.avatar}

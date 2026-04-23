@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { auth, db } from '../firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, collection, onSnapshot, query, where, addDoc, deleteDoc, writeBatch } from 'firebase/firestore';
@@ -11,6 +11,18 @@ export type Subject = {
   timeSpent?: number; // Added optional timeSpent for backward compatibility
 };
 
+export type SubTopic = {
+  id: string;
+  title: string;
+  status: 'Pending' | 'In Progress' | 'Completed';
+  targetMinutes?: number;
+  timeSpent?: number;
+  nextReviewDate?: string | null;
+  interval?: number;
+  easeFactor?: number;
+  reviewCount?: number;
+};
+
 export type Topic = {
   id: string;
   subjectId: string;
@@ -19,6 +31,12 @@ export type Topic = {
   timeSpent: number;
   targetMinutes: number;
   lastUpdated: string;
+  nextReviewDate?: string | null;
+  interval?: number;
+  easeFactor?: number;
+  reviewCount?: number;
+  subTopics?: SubTopic[];
+  date?: string;
 };
 
 export type Task = {
@@ -32,6 +50,7 @@ export type Task = {
   type: 'study' | 'practice' | 'test';
   color: string;
   priority?: 'q1' | 'q2' | 'q3' | 'q4';
+  isMostImportant?: boolean;
 };
 
 export type StudySlot = {
@@ -57,6 +76,9 @@ export type User = {
   notificationsEnabled?: boolean;
   studySlots?: StudySlot[];
   treesGrown?: number;
+  freezeDaysAvailable?: number;
+  frozenDates?: string[];
+  nextMockTestDate?: string;
 };
 
 export type JournalEntry = {
@@ -106,6 +128,7 @@ type StoreContextType = {
   toggleTask: (id: string) => void;
   deleteTask: (id: string) => void;
   editTask: (id: string, updatedTask: Partial<Task>) => void;
+  setMostImportantTask: (id: string, date: string) => void;
   subjects: Subject[];
   addSubject: (subject: Omit<Subject, 'id'>) => void;
   deleteSubject: (id: string) => void;
@@ -114,7 +137,13 @@ type StoreContextType = {
   addTopic: (topic: Omit<Topic, 'id' | 'timeSpent' | 'status' | 'lastUpdated'>) => void;
   deleteTopic: (id: string) => void;
   toggleTopicStatus: (id: string) => void;
+  reviewTopic: (id: string, rating: 'Hard' | 'Good' | 'Easy') => void;
+  addSubTopic: (topicId: string, title: string, targetMinutes?: number) => void;
+  deleteSubTopic: (topicId: string, subTopicId: string) => void;
+  toggleSubTopicStatus: (topicId: string, subTopicId: string) => void;
+  reviewSubTopic: (topicId: string, subTopicId: string, rating: 'Hard' | 'Good' | 'Easy') => void;
   addTopicTime: (id: string, mins: number) => void;
+  addSubTopicTime: (topicId: string, subTopicId: string, mins: number) => void;
   focusTimeToday: number;
   focusHistory: Record<string, number>;
   currentStreak: number;
@@ -127,6 +156,7 @@ type StoreContextType = {
   removeToast: (id: string) => void;
   updateUserCoins: (amount: number) => void;
   addTreeGrown: () => void;
+  toggleFreezeDay: () => void;
   isOffline: boolean;
 
   youtubeChannels: YouTubeChannel[];
@@ -152,10 +182,12 @@ type StoreContextType = {
     sessionType: 'focus' | 'break';
     selectedSubjectId: string;
     selectedTopicId: string;
+    selectedSubTopicId: string;
     selectedTaskId: string;
     treeState: 'growing' | 'withered';
     treesGrownSession: number;
     targetEndTime: number | null; // For background accuracy
+    startTime: number | null; // For stopwatch mode
   };
   setTimerState: React.Dispatch<React.SetStateAction<StoreContextType['timerState']>>;
 };
@@ -199,10 +231,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     sessionType: 'focus',
     selectedSubjectId: '',
     selectedTopicId: '',
+    selectedSubTopicId: '',
     selectedTaskId: '',
     treeState: 'growing',
     treesGrownSession: 0,
     targetEndTime: null,
+    startTime: null,
   });
 
   // Data states (Local Storage)
@@ -226,24 +260,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Global Timer Logic
   useEffect(() => {
     let animationFrameId: number;
-    let lastTick = Date.now();
 
     const tick = () => {
-      if (!timerState.isRunning || !timerState.targetEndTime) return;
+      if (!timerState.isRunning) return;
 
       const now = Date.now();
-      const remaining = Math.max(0, Math.ceil((timerState.targetEndTime - now) / 1000));
 
-      if (remaining !== timerState.timeLeft) {
-        setTimerState(prev => ({ ...prev, timeLeft: remaining }));
+      if (timerState.mode === 'stopwatch') {
+        if (!timerState.startTime) return;
+        const elapsed = Math.floor((now - timerState.startTime) / 1000);
+        
+        if (elapsed !== timerState.timeLeft) {
+          const actualElapsed = elapsed - timerState.timeLeft;
+          setTimerState(prev => ({ ...prev, timeLeft: elapsed }));
 
-        // Accumulate focus time
-        if (timerState.sessionType === 'focus') {
-          const deltaSeconds = Math.floor((now - lastTick) / 1000);
-          if (deltaSeconds > 0) {
-            secondsAccumulator.current += deltaSeconds;
-            lastTick = now;
-
+          if (timerState.sessionType === 'focus' && actualElapsed > 0) {
+            secondsAccumulator.current += actualElapsed;
             if (secondsAccumulator.current >= 60) {
               const minutesToAdd = Math.floor(secondsAccumulator.current / 60);
               secondsAccumulator.current %= 60;
@@ -251,43 +283,66 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               addFocusTime(minutesToAdd);
               if (timerState.selectedSubjectId) addSubjectTime(timerState.selectedSubjectId, minutesToAdd);
               if (timerState.selectedTopicId) addTopicTime(timerState.selectedTopicId, minutesToAdd);
-              updateUserCoins(minutesToAdd * 2); // Award 2 coins per minute studied
+              if (timerState.selectedTopicId && timerState.selectedSubTopicId) addSubTopicTime(timerState.selectedTopicId, timerState.selectedSubTopicId, minutesToAdd);
+              updateUserCoins(minutesToAdd * 2);
             }
           }
         }
-      }
-
-      if (remaining <= 0) {
-        // Timer Finished
-        setTimerState(prev => ({ ...prev, isRunning: false, targetEndTime: null }));
-        
-        if (timerState.sessionType === 'focus') {
-          const taskName = timerState.selectedTaskId ? tasks.find(t => t.id === timerState.selectedTaskId)?.title : null;
-          showToast(`Session complete! ${taskName ? `Worked on: ${taskName}. ` : ''}Tree Grown! 🌳`, "success");
-          
-          if (timerState.treeState === 'growing') {
-            setTimerState(prev => ({ ...prev, treesGrownSession: prev.treesGrownSession + 1 }));
-            addTreeGrown();
-          }
-          
-          setTimerState(prev => ({
-            ...prev,
-            sessionType: 'break',
-            timeLeft: prev.breakDuration * 60,
-            initialTime: prev.breakDuration * 60
-          }));
-        } else {
-          showToast("Break over! Time to focus.", "info");
-          setTimerState(prev => ({
-            ...prev,
-            sessionType: 'focus',
-            treeState: 'growing',
-            timeLeft: prev.focusDuration * 60,
-            initialTime: prev.focusDuration * 60
-          }));
-        }
-      } else {
         animationFrameId = requestAnimationFrame(tick);
+      } else {
+        if (!timerState.targetEndTime) return;
+        const remaining = Math.max(0, Math.ceil((timerState.targetEndTime - now) / 1000));
+
+        if (remaining !== timerState.timeLeft) {
+          const actualElapsed = timerState.timeLeft - remaining;
+          setTimerState(prev => ({ ...prev, timeLeft: remaining }));
+
+          if (timerState.sessionType === 'focus' && actualElapsed > 0) {
+            secondsAccumulator.current += actualElapsed;
+            if (secondsAccumulator.current >= 60) {
+              const minutesToAdd = Math.floor(secondsAccumulator.current / 60);
+              secondsAccumulator.current %= 60;
+              
+              addFocusTime(minutesToAdd);
+              if (timerState.selectedSubjectId) addSubjectTime(timerState.selectedSubjectId, minutesToAdd);
+              if (timerState.selectedTopicId) addTopicTime(timerState.selectedTopicId, minutesToAdd);
+              if (timerState.selectedTopicId && timerState.selectedSubTopicId) addSubTopicTime(timerState.selectedTopicId, timerState.selectedSubTopicId, minutesToAdd);
+              updateUserCoins(minutesToAdd * 2);
+            }
+          }
+        }
+
+        if (remaining <= 0) {
+          setTimerState(prev => ({ ...prev, isRunning: false, targetEndTime: null }));
+          
+          if (timerState.sessionType === 'focus') {
+            const taskName = timerState.selectedTaskId ? tasks.find(t => t.id === timerState.selectedTaskId)?.title : null;
+            showToast(`Session complete! ${taskName ? `Worked on: ${taskName}. ` : ''}Tree Grown! 🌳`, "success");
+            
+            if (timerState.treeState === 'growing') {
+              setTimerState(prev => ({ ...prev, treesGrownSession: prev.treesGrownSession + 1 }));
+              addTreeGrown();
+            }
+            
+            setTimerState(prev => ({
+              ...prev,
+              sessionType: 'break',
+              timeLeft: prev.breakDuration * 60,
+              initialTime: prev.breakDuration * 60
+            }));
+          } else {
+            showToast("Break over! Time to focus.", "info");
+            setTimerState(prev => ({
+              ...prev,
+              sessionType: 'focus',
+              treeState: 'growing',
+              timeLeft: prev.focusDuration * 60,
+              initialTime: prev.focusDuration * 60
+            }));
+          }
+        } else {
+          animationFrameId = requestAnimationFrame(tick);
+        }
       }
     };
 
@@ -298,7 +353,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
     };
-  }, [timerState.isRunning, timerState.targetEndTime, timerState.timeLeft, timerState.sessionType, timerState.selectedSubjectId, timerState.selectedTopicId, timerState.selectedTaskId, timerState.treeState, tasks]);
+  }, [timerState.isRunning, timerState.targetEndTime, timerState.startTime, timerState.mode, timerState.timeLeft, timerState.sessionType, timerState.selectedSubjectId, timerState.selectedTopicId, timerState.selectedTaskId, timerState.treeState, tasks]);
 
   // Sync with live_students collection globally
   useEffect(() => {
@@ -375,9 +430,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               examDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
               targetHours: 6,
               role: 'user',
-              focusCoins: 0
+              focusCoins: 0,
+              totalFocusMinutes: 0
             };
-            await setDoc(userRef, newUser);
+            const batch = writeBatch(db);
+            batch.set(userRef, newUser);
+            batch.set(doc(db, 'leaderboard', fUser.uid), {
+              name: newUser.name,
+              photoURL: newUser.photoURL || '',
+              totalFocusMinutes: 0,
+              updatedAt: new Date().toISOString()
+            });
+            await batch.commit();
             setUserState(newUser);
           }
         } catch (error) {
@@ -420,19 +484,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let bestStreak = 0;
     let tempStreak = 0;
     
-    const sortedDates = Object.keys(focusHistory).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+    const allDatesSet = new Set([...Object.keys(focusHistory), ...(user?.frozenDates || [])]);
+    const sortedDates = Array.from(allDatesSet).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
     
     if (sortedDates.length === 0) return { currentStreak: 0, bestStreak: 0 };
 
     const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     const minMins = user?.minimumDailyMinutes || 0;
 
     // Calculate current streak
     let checkDate = new Date();
     while (true) {
       const dateStr = checkDate.toISOString().split('T')[0];
-      const hasMetGoal = focusHistory[dateStr] && focusHistory[dateStr] > 0 && focusHistory[dateStr] >= minMins;
+      const isFrozen = user?.frozenDates?.includes(dateStr);
+      const hasMetGoal = isFrozen || (focusHistory[dateStr] && focusHistory[dateStr] > 0 && focusHistory[dateStr] >= minMins);
+      
       if (hasMetGoal) {
         currentStreak++;
         checkDate.setDate(checkDate.getDate() - 1);
@@ -445,11 +511,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     // Calculate best streak
-    const allDatesAsc = Object.keys(focusHistory).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+    const allDatesAsc = Array.from(allDatesSet).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
     let prevDate: Date | null = null;
     
     for (const dateStr of allDatesAsc) {
-      const hasMetGoal = focusHistory[dateStr] && focusHistory[dateStr] > 0 && focusHistory[dateStr] >= minMins;
+      const isFrozen = user?.frozenDates?.includes(dateStr);
+      const hasMetGoal = isFrozen || (focusHistory[dateStr] && focusHistory[dateStr] > 0 && focusHistory[dateStr] >= minMins);
       if (hasMetGoal) {
         const currDate = new Date(dateStr);
         if (!prevDate) {
@@ -511,6 +578,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updatedTask } : t));
   };
 
+  const setMostImportantTask = async (id: string, date: string) => {
+    setTasks(prev => prev.map(t => {
+      if (t.date === date) {
+        return { ...t, isMostImportant: t.id === id };
+      }
+      return t;
+    }));
+  };
+
   const addSubject = async (subject: Omit<Subject, 'id'>) => {
     const newSubject = { ...subject, id: Math.random().toString(36).substr(2, 9) };
     setSubjects(prev => [...prev, newSubject as Subject]);
@@ -543,14 +619,175 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const toggleTopicStatus = async (id: string) => {
     setTopics(prev => prev.map(t => {
       if (t.id === id) {
-        if (t.status !== 'Completed') {
-          showToast("Topic completed!", "success");
-        }
         const newStatus = t.status === 'Completed' ? 'In Progress' : 'Completed';
+        
+        let updatedSubTopics = t.subTopics;
+        if (t.subTopics && t.subTopics.length > 0) {
+          updatedSubTopics = t.subTopics.map(st => ({
+            ...st,
+            status: newStatus === 'Completed' ? 'Completed' : (st.status === 'Completed' ? 'In Progress' : st.status),
+            timeSpent: newStatus === 'Completed' && st.targetMinutes ? Math.max(st.timeSpent || 0, st.targetMinutes) : st.timeSpent
+          }));
+        }
+
         return { 
           ...t, 
           status: newStatus, 
+          subTopics: updatedSubTopics,
           timeSpent: newStatus === 'Completed' ? Math.max(t.timeSpent, t.targetMinutes) : t.timeSpent 
+        };
+      }
+      return t;
+    }));
+  };
+
+  const reviewTopic = async (id: string, rating: 'Hard' | 'Good' | 'Easy') => {
+    setTopics(prev => prev.map(t => {
+      if (t.id === id) {
+        let { interval = 0, easeFactor = 2.5, reviewCount = 0 } = t;
+        
+        if (rating === 'Hard') {
+          interval = 1;
+          easeFactor = Math.max(1.3, easeFactor - 0.2);
+        } else if (rating === 'Good') {
+          interval = reviewCount === 0 ? 1 : reviewCount === 1 ? 3 : Math.round(interval * easeFactor);
+        } else if (rating === 'Easy') {
+          interval = reviewCount === 0 ? 3 : reviewCount === 1 ? 7 : Math.round(interval * easeFactor * 1.3);
+          easeFactor += 0.15;
+        }
+
+        reviewCount += 1;
+        
+        const nextReviewDate = new Date();
+        nextReviewDate.setDate(nextReviewDate.getDate() + interval);
+
+        showToast(`Next review in ${interval} day${interval > 1 ? 's' : ''}`, "info");
+
+        return {
+          ...t,
+          status: 'Completed',
+          timeSpent: Math.max(t.timeSpent, t.targetMinutes),
+          interval,
+          easeFactor,
+          reviewCount,
+          nextReviewDate: nextReviewDate.toISOString().split('T')[0]
+        };
+      }
+      return t;
+    }));
+  };
+
+  const addSubTopic = (topicId: string, title: string, targetMinutes?: number) => {
+    setTopics(prev => prev.map(t => {
+      if (t.id === topicId) {
+        const newSubTopic: SubTopic = {
+          id: Math.random().toString(36).substr(2, 9),
+          title,
+          status: 'Pending',
+          targetMinutes
+        };
+        return {
+          ...t,
+          subTopics: [...(t.subTopics || []), newSubTopic]
+        };
+      }
+      return t;
+    }));
+  };
+
+  const deleteSubTopic = (topicId: string, subTopicId: string) => {
+    setTopics(prev => prev.map(t => {
+      if (t.id === topicId && t.subTopics) {
+        const updatedSubTopics = t.subTopics.filter(st => st.id !== subTopicId);
+        
+        // Auto-update parent status
+        let parentStatus = t.status;
+        if (updatedSubTopics.length > 0) {
+          const allCompleted = updatedSubTopics.every(st => st.status === 'Completed');
+          const someCompleted = updatedSubTopics.some(st => st.status === 'Completed' || st.status === 'In Progress');
+          parentStatus = allCompleted ? 'Completed' : someCompleted ? 'In Progress' : 'Pending';
+        }
+
+        return {
+          ...t,
+          subTopics: updatedSubTopics,
+          status: parentStatus
+        };
+      }
+      return t;
+    }));
+  };
+
+  const toggleSubTopicStatus = (topicId: string, subTopicId: string) => {
+    setTopics(prev => prev.map(t => {
+      if (t.id === topicId && t.subTopics) {
+        const updatedSubTopics = t.subTopics.map(st => {
+          if (st.id === subTopicId) {
+            const newStatus: 'Completed' | 'In Progress' = st.status === 'Completed' ? 'In Progress' : 'Completed';
+            return { 
+              ...st, 
+              status: newStatus,
+              timeSpent: newStatus === 'Completed' && st.targetMinutes ? Math.max(st.timeSpent || 0, st.targetMinutes) : st.timeSpent
+            };
+          }
+          return st;
+        });
+        
+        // Auto-update parent status
+        const allCompleted = updatedSubTopics.every(st => st.status === 'Completed');
+        const someCompleted = updatedSubTopics.some(st => st.status === 'Completed' || st.status === 'In Progress');
+        const parentStatus: 'Completed' | 'In Progress' | 'Pending' = allCompleted ? 'Completed' : someCompleted ? 'In Progress' : 'Pending';
+
+        return { ...t, subTopics: updatedSubTopics, status: parentStatus };
+      }
+      return t;
+    }));
+  };
+
+  const reviewSubTopic = (topicId: string, subTopicId: string, rating: 'Hard' | 'Good' | 'Easy') => {
+    setTopics(prev => prev.map(t => {
+      if (t.id === topicId && t.subTopics) {
+        const updatedSubTopics = t.subTopics.map(st => {
+          if (st.id === subTopicId) {
+            let { interval = 0, easeFactor = 2.5, reviewCount = 0 } = st;
+            
+            if (rating === 'Hard') {
+              interval = 1;
+              easeFactor = Math.max(1.3, easeFactor - 0.2);
+            } else if (rating === 'Good') {
+              interval = reviewCount === 0 ? 1 : reviewCount === 1 ? 3 : Math.round(interval * easeFactor);
+            } else if (rating === 'Easy') {
+              interval = reviewCount === 0 ? 3 : reviewCount === 1 ? 7 : Math.round(interval * easeFactor * 1.3);
+              easeFactor += 0.15;
+            }
+
+            reviewCount += 1;
+            const nextReviewDate = new Date();
+            nextReviewDate.setDate(nextReviewDate.getDate() + interval);
+
+            showToast(`Next review in ${interval} day${interval > 1 ? 's' : ''}`, "info");
+
+            return {
+              ...st,
+              status: 'Completed' as const,
+              interval,
+              easeFactor,
+              reviewCount,
+              nextReviewDate: nextReviewDate.toISOString().split('T')[0]
+            };
+          }
+          return st;
+        });
+
+        // Auto-update parent status
+        const allCompleted = updatedSubTopics.every(st => st.status === 'Completed');
+        const someCompleted = updatedSubTopics.some(st => st.status === 'Completed' || st.status === 'In Progress');
+        
+        return {
+          ...t,
+          subTopics: updatedSubTopics,
+          status: allCompleted ? 'Completed' : someCompleted ? 'In Progress' : 'Pending',
+          timeSpent: allCompleted ? Math.max(t.timeSpent, t.targetMinutes) : t.timeSpent
         };
       }
       return t;
@@ -561,16 +798,54 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setTopics(prev => prev.map(t => {
       if (t.id === id) {
         const newTime = t.timeSpent + mins;
-        const isCompleted = newTime >= t.targetMinutes;
-        if (isCompleted && t.status !== 'Completed') {
-          showToast("Topic auto-completed!", "success");
+        const hasSubTopics = t.subTopics && t.subTopics.length > 0;
+        
+        if (!hasSubTopics) {
+          const isCompleted = newTime >= t.targetMinutes;
+          if (isCompleted && t.status !== 'Completed') {
+            showToast("Topic auto-completed!", "success");
+          }
+          return {
+            ...t,
+            timeSpent: newTime,
+            status: isCompleted ? 'Completed' : (t.status === 'Completed' ? 'Completed' : 'In Progress'),
+            lastUpdated: new Date().toISOString()
+          };
+        } else {
+          return {
+            ...t,
+            timeSpent: newTime,
+            status: t.status === 'Pending' ? 'In Progress' : t.status,
+            lastUpdated: new Date().toISOString()
+          };
         }
-        return {
-          ...t,
-          timeSpent: newTime,
-          status: isCompleted ? 'Completed' : 'In Progress',
-          lastUpdated: new Date().toISOString()
-        };
+      }
+      return t;
+    }));
+  };
+
+  const addSubTopicTime = async (topicId: string, subTopicId: string, mins: number) => {
+    setTopics(prev => prev.map(t => {
+      if (t.id === topicId && t.subTopics) {
+        const updatedSubTopics = t.subTopics.map(st => {
+          if (st.id === subTopicId) {
+            const newTime = (st.timeSpent || 0) + mins;
+            const isCompleted = st.targetMinutes ? newTime >= st.targetMinutes : false;
+            if (isCompleted && st.status !== 'Completed') {
+              showToast(`Sub-topic "${st.title}" completed! 🎉`, "success");
+              return { ...st, timeSpent: newTime, status: 'Completed' as const };
+            }
+            return { ...st, timeSpent: newTime, status: st.status === 'Pending' ? 'In Progress' : st.status };
+          }
+          return st;
+        });
+        
+        // Auto-update parent status
+        const allCompleted = updatedSubTopics.every(st => st.status === 'Completed');
+        const someCompleted = updatedSubTopics.some(st => st.status === 'Completed' || st.status === 'In Progress');
+        const parentStatus = allCompleted ? 'Completed' : someCompleted ? 'In Progress' : 'Pending';
+
+        return { ...t, subTopics: updatedSubTopics, status: parentStatus, lastUpdated: new Date().toISOString() };
       }
       return t;
     }));
@@ -591,7 +866,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setUser({ ...user, totalFocusMinutes: newTotal });
       if (firebaseUser) {
         try {
-          await updateDoc(doc(db, 'users', firebaseUser.uid), { totalFocusMinutes: newTotal });
+          const batch = writeBatch(db);
+          batch.update(doc(db, 'users', firebaseUser.uid), { totalFocusMinutes: newTotal });
+          batch.set(doc(db, 'leaderboard', firebaseUser.uid), {
+            name: user.name,
+            photoURL: user.photoURL || '',
+            totalFocusMinutes: newTotal,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+          await batch.commit();
         } catch (error) {
           console.error("Error updating total focus minutes:", error);
         }
@@ -608,17 +891,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setJournalEntries(prev => [newEntry as JournalEntry, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
   };
 
-  const showToast = (message: string, type: 'success' | 'info' | 'error' = 'info') => {
+  const removeToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  const showToast = useCallback((message: string, type: 'success' | 'info' | 'error' = 'info') => {
     const id = Math.random().toString(36).substr(2, 9);
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => {
       removeToast(id);
     }, 3000);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  };
+  }, [removeToast]);
 
   const updateUserCoins = (amount: number) => {
     setUserState(prev => {
@@ -646,6 +929,54 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       return updatedUser;
     });
+  };
+
+  const toggleFreezeDay = () => {
+    if (!user) return;
+    const today = new Date().toISOString().split('T')[0];
+    const currentFreezes = user.frozenDates || [];
+    const available = user.freezeDaysAvailable !== undefined ? user.freezeDaysAvailable : 3;
+    
+    if (currentFreezes.includes(today)) {
+      // Unapply freeze day
+      const newFreezes = currentFreezes.filter(d => d !== today);
+      const updatedUser = { 
+        ...user, 
+        freezeDaysAvailable: available + 1,
+        frozenDates: newFreezes
+      };
+      
+      setUserState(updatedUser);
+      if (firebaseUser) {
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        updateDoc(userRef, { 
+          freezeDaysAvailable: available + 1,
+          frozenDates: newFreezes
+        }).catch(err => console.error("Error updating freeze days in Firestore", err));
+      }
+      
+      showToast("Leave cancelled. Streak is active again.", "info");
+    } else if (available > 0) {
+      // Apply freeze day
+      const updatedUser = { 
+        ...user, 
+        freezeDaysAvailable: available - 1,
+        frozenDates: [...currentFreezes, today]
+      };
+      
+      setUserState(updatedUser);
+      if (firebaseUser) {
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        updateDoc(userRef, { 
+          freezeDaysAvailable: available - 1,
+          frozenDates: [...currentFreezes, today]
+        }).catch(err => console.error("Error updating freeze days in Firestore", err));
+      }
+      
+      showToast("Freeze day applied! Your streak is safe today.", "success");
+    } else {
+      showToast("No freeze days available.", "error");
+    }
   };
 
   const addYouTubeChannel = async (channel: Omit<YouTubeChannel, 'id' | 'createdAt'>) => {
@@ -695,10 +1026,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   return (
     <StoreContext.Provider value={{
-      user, setUser, firebaseUser, isAuthReady, theme, toggleTheme, tasks, addTask, toggleTask, deleteTask, editTask,
-      subjects, addSubject, deleteSubject, addSubjectTime, topics, addTopic, deleteTopic, toggleTopicStatus, addTopicTime,
+      user, setUser, firebaseUser, isAuthReady, theme, toggleTheme, tasks, addTask, toggleTask, deleteTask, editTask, setMostImportantTask,
+      subjects, addSubject, deleteSubject, addSubjectTime, topics, addTopic, deleteTopic, toggleTopicStatus, reviewTopic, addSubTopic, deleteSubTopic, toggleSubTopicStatus, reviewSubTopic, addTopicTime, addSubTopicTime,
       focusTimeToday, focusHistory, currentStreak, bestStreak, addFocusTime, journalEntries, addJournalEntry,
-      toasts, showToast, removeToast, updateUserCoins, addTreeGrown, isOffline,
+      toasts, showToast, removeToast, updateUserCoins, addTreeGrown, toggleFreezeDay, isOffline,
       youtubeChannels, addYouTubeChannel, deleteYouTubeChannel,
       telegramChannels, addTelegramChannel, deleteTelegramChannel,
       studyApps, addStudyApp, deleteStudyApp,

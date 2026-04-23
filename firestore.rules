@@ -26,7 +26,7 @@ service cloud.firestore {
     }
     
     function isValidUser(data) {
-      return hasOnlyAllowedFields(['uid', 'name', 'email', 'photoURL', 'dream', 'examDate', 'targetHours', 'role', 'focusCoins', 'minimumDailyMinutes', 'notificationsEnabled', 'studySlots', 'treesGrown', 'inspirationImage', 'totalFocusMinutes']) &&
+      return hasOnlyAllowedFields(['uid', 'name', 'email', 'photoURL', 'dream', 'examDate', 'targetHours', 'role', 'focusCoins', 'minimumDailyMinutes', 'notificationsEnabled', 'studySlots', 'treesGrown', 'inspirationImage', 'totalFocusMinutes', 'freezeDaysAvailable', 'frozenDates', 'nextMockTestDate']) &&
              data.uid is string &&
              data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
              (!('email' in data) || (data.email is string && (data.email == '' || data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$")))) &&
@@ -34,6 +34,7 @@ service cloud.firestore {
              (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 2000000)) &&
              (!('dream' in data) || (data.dream is string && data.dream.size() < 500)) &&
              (!('examDate' in data) || data.examDate is string) &&
+             (!('nextMockTestDate' in data) || data.nextMockTestDate is string) &&
              (!('targetHours' in data) || (data.targetHours is number && data.targetHours >= 0)) &&
              (!('focusCoins' in data) || (data.focusCoins is number && data.focusCoins >= 0)) &&
              (!('minimumDailyMinutes' in data) || (data.minimumDailyMinutes is number && data.minimumDailyMinutes >= 0)) &&
@@ -41,7 +42,9 @@ service cloud.firestore {
              (!('studySlots' in data) || data.studySlots is list) &&
              (!('treesGrown' in data) || (data.treesGrown is number && data.treesGrown >= 0)) &&
              (!('inspirationImage' in data) || (data.inspirationImage is string && data.inspirationImage.size() < 2000000)) &&
-             (!('totalFocusMinutes' in data) || (data.totalFocusMinutes is number && data.totalFocusMinutes >= 0));
+             (!('totalFocusMinutes' in data) || (data.totalFocusMinutes is number && data.totalFocusMinutes >= 0)) &&
+             (!('freezeDaysAvailable' in data) || (data.freezeDaysAvailable is number && data.freezeDaysAvailable >= 0)) &&
+             (!('frozenDates' in data) || data.frozenDates is list);
     }
 
     function isValidSubject(data) {
@@ -127,6 +130,15 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create, update: if isAuthenticated() && request.auth.uid == studentId;
       allow delete: if isAuthenticated() && request.auth.uid == studentId;
+    }
+
+    match /leaderboard/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwner(userId) && 
+                            request.resource.data.keys().hasOnly(['name', 'photoURL', 'totalFocusMinutes', 'updatedAt']) &&
+                            request.resource.data.name is string &&
+                            request.resource.data.totalFocusMinutes is number;
+      allow delete: if isAdmin();
     }
 
     match /users/{userId} {

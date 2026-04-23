@@ -80,12 +80,13 @@ export default function Timer() {
   const { 
     user, addFocusTime, showToast, subjects, topics, tasks, 
     addTopicTime, addSubjectTime, updateUserCoins, addTreeGrown,
-    timerState, setTimerState, theme, toggleTheme
+    timerState, setTimerState, theme, toggleTheme,
+    toggleTask, toggleTopicStatus, toggleSubTopicStatus
   } = useStore();
   
   const {
     mode, focusDuration, breakDuration, timeLeft, initialTime,
-    isRunning, sessionType, selectedSubjectId, selectedTopicId,
+    isRunning, sessionType, selectedSubjectId, selectedTopicId, selectedSubTopicId,
     selectedTaskId, treeState, treesGrownSession, targetEndTime
   } = timerState;
 
@@ -104,6 +105,7 @@ export default function Timer() {
   
   const [showSubjectDropdown, setShowSubjectDropdown] = useState(false);
   const [showTopicDropdown, setShowTopicDropdown] = useState(false);
+  const [showSubTopicDropdown, setShowSubTopicDropdown] = useState(false);
   const [showTaskDropdown, setShowTaskDropdown] = useState(false);
   const [showLinkPrompt, setShowLinkPrompt] = useState(false);
   
@@ -113,44 +115,80 @@ export default function Timer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const sounds = [
-    { id: 'binaural', name: 'Binaural Beats', desc: 'Deep Focus 40Hz', icon: 'music_note', url: 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3' },
-    { id: 'rain', name: 'Heavy Rain', desc: 'Nature Sounds', icon: 'water_drop', url: 'https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3' },
-    { id: 'forest', name: 'Forest Birds', desc: 'Nature Sounds', icon: 'park', url: 'https://cdn.pixabay.com/download/audio/2021/08/09/audio_e19611f75b.mp3' },
-    { id: 'lofi', name: 'Lo-Fi Beats', desc: 'Chill Study', icon: 'headphones', url: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3' },
-    { id: 'white_noise', name: 'White Noise', desc: 'Block Distractions', icon: 'waves', url: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_78d5236263.mp3' }
+    { id: 'binaural', name: 'Deep Focus', desc: 'Ambient Hum', icon: 'music_note', url: 'https://assets.mixkit.co/active_storage/sfx/2578/2578-preview.mp3' },
+    { id: 'rain', name: 'Heavy Rain', desc: 'Nature Sounds', icon: 'water_drop', url: 'https://assets.mixkit.co/active_storage/sfx/1244/1244-preview.mp3' },
+    { id: 'forest', name: 'Forest Birds', desc: 'Nature Sounds', icon: 'park', url: 'https://assets.mixkit.co/active_storage/sfx/2494/2494-preview.mp3' },
+    { id: 'ocean', name: 'Ocean Waves', desc: 'Chill Study', icon: 'waves', url: 'https://assets.mixkit.co/active_storage/sfx/1168/1168-preview.mp3' },
+    { id: 'white_noise', name: 'White Noise', desc: 'Block Distractions', icon: 'air', url: 'https://assets.mixkit.co/active_storage/sfx/2501/2501-preview.mp3' }
   ];
   const [selectedSound, setSelectedSound] = useState(sounds[0]);
 
   // Audio Playback Logic
-  useEffect(() => {
+  const toggleAudio = () => {
     if (!audioRef.current) {
       audioRef.current = new Audio(selectedSound.url);
       audioRef.current.loop = true;
-    } else if (audioRef.current.src !== selectedSound.url) {
-      audioRef.current.src = selectedSound.url;
     }
-
-    if (isPlayingAudio && isRunning) {
-      audioRef.current.play().catch(err => {
+    
+    if (isPlayingAudio) {
+      audioRef.current.pause();
+      setIsPlayingAudio(false);
+    } else {
+      // Only play if timer is running
+      if (!isRunning) {
+        showToast("Start the timer to play ambient sounds", "info");
+        return;
+      }
+      audioRef.current.play().then(() => {
+        setIsPlayingAudio(true);
+      }).catch(err => {
         console.error("Audio playback failed:", err);
+        showToast("Audio playback failed. Tap again.", "error");
         setIsPlayingAudio(false);
       });
+    }
+  };
+
+  const changeSound = (sound: typeof sounds[0]) => {
+    setSelectedSound(sound);
+    setShowSoundDropdown(false);
+    
+    if (!audioRef.current) {
+      audioRef.current = new Audio(sound.url);
+      audioRef.current.loop = true;
     } else {
-      audioRef.current.pause();
+      audioRef.current.src = sound.url;
     }
 
+    if (isRunning) {
+      audioRef.current.play().then(() => {
+        setIsPlayingAudio(true);
+      }).catch(console.error);
+    }
+  };
+
+  // Pause audio when timer stops
+  useEffect(() => {
+    if (!isRunning && isPlayingAudio && audioRef.current) {
+      audioRef.current.pause();
+      setIsPlayingAudio(false);
+    }
+  }, [isRunning, isPlayingAudio]);
+
+  // Cleanup on unmount
+  useEffect(() => {
     return () => {
       if (audioRef.current) {
         audioRef.current.pause();
       }
     };
-  }, [isPlayingAudio, selectedSound, isRunning]);
+  }, []);
 
   const secondsAccumulator = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const progress = initialTime > 0 ? ((initialTime - timeLeft) / initialTime) * 100 : 0;
+  const progress = mode === 'stopwatch' ? 100 : (initialTime > 0 ? ((initialTime - timeLeft) / initialTime) * 100 : 0);
 
   // PiP Canvas Drawing
   useEffect(() => {
@@ -207,19 +245,8 @@ export default function Timer() {
     }
   };
 
-  // Visibility API for Tree Withering
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden && isRunning && sessionType === 'focus') {
-        setTimerState(prev => ({ ...prev, treeState: 'withered' }));
-        showToast("You left the app! Your tree withered.", "error");
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isRunning, sessionType, showToast, setTimerState]);
-
+  // Visibility API for Tree Withering removed to allow background/offline studying without penalty
+  
   // Update selected topic when subject changes
   useEffect(() => {
     const subjectTopics = topics.filter(t => t.subjectId === selectedSubjectId);
@@ -231,16 +258,24 @@ export default function Timer() {
   }, [selectedSubjectId, topics, selectedTopicId, setTimerState]);
 
   const toggleTimer = () => {
-    if (!isRunning && !selectedSubjectId && !selectedTopicId && !selectedTaskId) {
+    if (!isRunning && !selectedSubjectId && !selectedTopicId && !selectedSubTopicId && !selectedTaskId) {
       setShowLinkPrompt(true);
     } else {
       setTimerState(prev => {
         const newIsRunning = !prev.isRunning;
-        return {
-          ...prev,
-          isRunning: newIsRunning,
-          targetEndTime: newIsRunning ? Date.now() + prev.timeLeft * 1000 : null
-        };
+        if (prev.mode === 'stopwatch') {
+          return {
+            ...prev,
+            isRunning: newIsRunning,
+            startTime: newIsRunning ? Date.now() - prev.timeLeft * 1000 : null
+          };
+        } else {
+          return {
+            ...prev,
+            isRunning: newIsRunning,
+            targetEndTime: newIsRunning ? Date.now() + prev.timeLeft * 1000 : null
+          };
+        }
       });
     }
   };
@@ -250,7 +285,8 @@ export default function Timer() {
       ...prev,
       isRunning: false,
       targetEndTime: null,
-      timeLeft: prev.initialTime
+      startTime: null,
+      timeLeft: prev.mode === 'stopwatch' ? 0 : prev.initialTime
     }));
   };
 
@@ -279,6 +315,15 @@ export default function Timer() {
     }
   };
 
+  const selectedTask = tasks.find(t => t.id === selectedTaskId);
+  const selectedTopic = topics.find(t => t.id === selectedTopicId);
+  const selectedSubTopic = selectedTopic?.subTopics?.find(st => st.id === selectedSubTopicId);
+
+  const isLinkedItemCompleted = 
+    (selectedTask && selectedTask.completed) ||
+    (selectedSubTopic && selectedSubTopic.status === 'Completed') ||
+    (!selectedSubTopic && selectedTopic && selectedTopic.status === 'Completed');
+
   return (
     <div className="bg-surface text-on-surface font-body min-h-screen flex flex-col relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none"></div>
@@ -289,7 +334,15 @@ export default function Timer() {
         </button>
         <div className="flex bg-surface-container-high rounded-full p-1 border border-outline-variant/20">
           <button 
-            onClick={() => setTimerState(prev => ({ ...prev, mode: 'pomodoro' }))}
+            onClick={() => setTimerState(prev => ({ 
+              ...prev, 
+              mode: 'pomodoro', 
+              isRunning: false, 
+              targetEndTime: null, 
+              startTime: null, 
+              timeLeft: prev.sessionType === 'focus' ? prev.focusDuration * 60 : prev.breakDuration * 60,
+              initialTime: prev.sessionType === 'focus' ? prev.focusDuration * 60 : prev.breakDuration * 60
+            }))}
             className={clsx(
               "px-4 py-1.5 rounded-full font-label text-xs uppercase tracking-widest transition-all",
               mode === 'pomodoro' ? "bg-primary text-on-primary shadow-md" : "text-on-surface-variant hover:text-on-surface"
@@ -298,7 +351,15 @@ export default function Timer() {
             Pomodoro
           </button>
           <button 
-            onClick={() => setTimerState(prev => ({ ...prev, mode: 'stopwatch' }))}
+            onClick={() => setTimerState(prev => ({ 
+              ...prev, 
+              mode: 'stopwatch', 
+              isRunning: false, 
+              targetEndTime: null, 
+              startTime: null, 
+              timeLeft: 0,
+              initialTime: 0
+            }))}
             className={clsx(
               "px-4 py-1.5 rounded-full font-label text-xs uppercase tracking-widest transition-all",
               mode === 'stopwatch' ? "bg-primary text-on-primary shadow-md" : "text-on-surface-variant hover:text-on-surface"
@@ -405,62 +466,112 @@ export default function Timer() {
             )}
           </div>
 
-          <div className="flex gap-2 w-full">
-            <div className="relative flex-1">
-              <div 
-                onClick={() => { setShowSubjectDropdown(!showSubjectDropdown); setShowTopicDropdown(false); setShowTaskDropdown(false); }}
-                className="bg-surface-container-high px-4 py-2 rounded-xl flex items-center justify-between border border-outline-variant/20 cursor-pointer hover:bg-surface-container-highest transition-colors w-full"
-              >
-                <div className="flex items-center gap-2 overflow-hidden">
-                  <span className={clsx("w-2 h-2 rounded-full flex-shrink-0", `bg-${subjects.find(s => s.id === selectedSubjectId)?.color || 'primary'}`)}></span>
-                  <span className="font-label text-sm font-medium truncate">{subjects.find(s => s.id === selectedSubjectId)?.name || 'Select Subject'}</span>
+          <div className="flex flex-col gap-2 w-full">
+            <div className="flex gap-2 w-full">
+              <div className="relative flex-1">
+                <div 
+                  onClick={() => { setShowSubjectDropdown(!showSubjectDropdown); setShowTopicDropdown(false); setShowSubTopicDropdown(false); setShowTaskDropdown(false); }}
+                  className="bg-surface-container-high px-4 py-2 rounded-xl flex items-center justify-between border border-outline-variant/20 cursor-pointer hover:bg-surface-container-highest transition-colors w-full"
+                >
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <span className={clsx("w-2 h-2 rounded-full flex-shrink-0", `bg-${subjects.find(s => s.id === selectedSubjectId)?.color || 'primary'}`)}></span>
+                    <span className="font-label text-sm font-medium truncate">{subjects.find(s => s.id === selectedSubjectId)?.name || 'Select Subject'}</span>
+                  </div>
+                  <span className="material-symbols-outlined text-on-surface-variant text-sm flex-shrink-0">expand_more</span>
                 </div>
-                <span className="material-symbols-outlined text-on-surface-variant text-sm flex-shrink-0">expand_more</span>
+                
+                {showSubjectDropdown && (
+                  <div className="absolute top-full mt-2 w-full bg-surface-container-high rounded-xl border border-outline-variant/20 shadow-xl overflow-hidden z-20 max-h-48 overflow-y-auto">
+                    {subjects.map(sub => (
+                      <button
+                        key={sub.id}
+                        onClick={() => {
+                          setTimerState(prev => {
+                            const newState = { ...prev, selectedSubjectId: sub.id, selectedTopicId: '', selectedSubTopicId: '', mode: 'stopwatch' as const, timeLeft: 0, initialTime: 0 };
+                            if (sub.targetMinutes && !prev.isRunning) {
+                              newState.focusDuration = sub.targetMinutes;
+                            }
+                            return newState;
+                          });
+                          setShowSubjectDropdown(false);
+                        }}
+                        className="w-full text-left px-4 py-3 hover:bg-surface-container-highest transition-colors font-label text-sm truncate"
+                      >
+                        {sub.name}
+                      </button>
+                    ))}
+                    {subjects.length === 0 && <div className="px-4 py-3 text-sm text-on-surface-variant">No subjects added</div>}
+                  </div>
+                )}
               </div>
-              
-              {showSubjectDropdown && (
-                <div className="absolute top-full mt-2 w-full bg-surface-container-high rounded-xl border border-outline-variant/20 shadow-xl overflow-hidden z-20 max-h-48 overflow-y-auto">
-                  {subjects.map(sub => (
-                    <button
-                      key={sub.id}
-                      onClick={() => {
-                        setTimerState(prev => ({ ...prev, selectedSubjectId: sub.id }));
-                        setShowSubjectDropdown(false);
-                      }}
-                      className="w-full text-left px-4 py-3 hover:bg-surface-container-highest transition-colors font-label text-sm truncate"
-                    >
-                      {sub.name}
-                    </button>
-                  ))}
-                  {subjects.length === 0 && <div className="px-4 py-3 text-sm text-on-surface-variant">No subjects added</div>}
+
+              <div className="relative flex-1">
+                <div 
+                  onClick={() => { setShowTopicDropdown(!showTopicDropdown); setShowSubjectDropdown(false); setShowSubTopicDropdown(false); setShowTaskDropdown(false); }}
+                  className="bg-surface-container-high px-4 py-2 rounded-xl flex items-center justify-between border border-outline-variant/20 cursor-pointer hover:bg-surface-container-highest transition-colors w-full"
+                >
+                  <span className="font-label text-sm font-medium truncate">{topics.find(t => t.id === selectedTopicId)?.title || 'Select Topic'}</span>
+                  <span className="material-symbols-outlined text-on-surface-variant text-sm flex-shrink-0">expand_more</span>
                 </div>
-              )}
+                
+                {showTopicDropdown && (
+                  <div className="absolute top-full mt-2 w-full bg-surface-container-high rounded-xl border border-outline-variant/20 shadow-xl overflow-hidden z-20 max-h-48 overflow-y-auto">
+                    {topics.filter(t => t.subjectId === selectedSubjectId).map(topic => (
+                      <button
+                        key={topic.id}
+                        onClick={() => {
+                          setTimerState(prev => {
+                            const newState = { ...prev, selectedTopicId: topic.id, selectedSubTopicId: '', mode: 'stopwatch' as const, timeLeft: 0, initialTime: 0 };
+                            if (topic.targetMinutes && !prev.isRunning) {
+                              newState.focusDuration = topic.targetMinutes;
+                            }
+                            return newState;
+                          });
+                          setShowTopicDropdown(false);
+                        }}
+                        className="w-full text-left px-4 py-3 hover:bg-surface-container-highest transition-colors font-label text-sm truncate"
+                      >
+                        {topic.title}
+                      </button>
+                    ))}
+                    {topics.filter(t => t.subjectId === selectedSubjectId).length === 0 && <div className="px-4 py-3 text-sm text-on-surface-variant">No topics found</div>}
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="relative flex-1">
+            <div className="relative w-full">
               <div 
-                onClick={() => { setShowTopicDropdown(!showTopicDropdown); setShowSubjectDropdown(false); setShowTaskDropdown(false); }}
+                onClick={() => { setShowSubTopicDropdown(!showSubTopicDropdown); setShowTopicDropdown(false); setShowSubjectDropdown(false); setShowTaskDropdown(false); }}
                 className="bg-surface-container-high px-4 py-2 rounded-xl flex items-center justify-between border border-outline-variant/20 cursor-pointer hover:bg-surface-container-highest transition-colors w-full"
               >
-                <span className="font-label text-sm font-medium truncate">{topics.find(t => t.id === selectedTopicId)?.title || 'Select Topic'}</span>
+                <span className="font-label text-sm font-medium truncate">
+                  {topics.find(t => t.id === selectedTopicId)?.subTopics?.find(st => st.id === selectedSubTopicId)?.title || 'Select Sub-topic'}
+                </span>
                 <span className="material-symbols-outlined text-on-surface-variant text-sm flex-shrink-0">expand_more</span>
               </div>
               
-              {showTopicDropdown && (
+              {showSubTopicDropdown && (
                 <div className="absolute top-full mt-2 w-full bg-surface-container-high rounded-xl border border-outline-variant/20 shadow-xl overflow-hidden z-20 max-h-48 overflow-y-auto">
-                  {topics.filter(t => t.subjectId === selectedSubjectId).map(topic => (
+                  {topics.find(t => t.id === selectedTopicId)?.subTopics?.map(subTopic => (
                     <button
-                      key={topic.id}
+                      key={subTopic.id}
                       onClick={() => {
-                        setTimerState(prev => ({ ...prev, selectedTopicId: topic.id }));
-                        setShowTopicDropdown(false);
+                        setTimerState(prev => {
+                          const newState = { ...prev, selectedSubTopicId: subTopic.id, mode: 'stopwatch' as const, timeLeft: 0, initialTime: 0 };
+                          if (subTopic.targetMinutes && !prev.isRunning) {
+                            newState.focusDuration = subTopic.targetMinutes;
+                          }
+                          return newState;
+                        });
+                        setShowSubTopicDropdown(false);
                       }}
                       className="w-full text-left px-4 py-3 hover:bg-surface-container-highest transition-colors font-label text-sm truncate"
                     >
-                      {topic.title}
+                      {subTopic.title}
                     </button>
                   ))}
-                  {topics.filter(t => t.subjectId === selectedSubjectId).length === 0 && <div className="px-4 py-3 text-sm text-on-surface-variant">No topics found</div>}
+                  {(!topics.find(t => t.id === selectedTopicId)?.subTopics || topics.find(t => t.id === selectedTopicId)?.subTopics?.length === 0) && <div className="px-4 py-3 text-sm text-on-surface-variant">No sub-topics found</div>}
                 </div>
               )}
             </div>
@@ -486,7 +597,7 @@ export default function Timer() {
               strokeWidth="12" 
               strokeLinecap="round"
               strokeDasharray="854.5" 
-              strokeDashoffset={854.5 - (854.5 * progress) / 100}
+              strokeDashoffset={mode === 'stopwatch' ? 0 : 854.5 - (854.5 * progress) / 100}
               className="transition-all duration-1000 ease-linear"
             />
           </svg>
@@ -498,6 +609,11 @@ export default function Timer() {
             <span className="font-label text-sm uppercase tracking-widest text-on-surface-variant mt-2">
               {sessionType === 'focus' ? 'Focus' : 'Break'}
             </span>
+            {mode === 'stopwatch' && focusDuration > 0 && (selectedSubjectId || selectedTopicId || selectedSubTopicId) && (
+              <span className="font-mono text-xs text-primary mt-2 bg-primary/10 px-2 py-1 rounded-md">
+                Est: {focusDuration}m
+              </span>
+            )}
           </div>
         </div>
 
@@ -541,6 +657,28 @@ export default function Timer() {
             <span className="material-symbols-outlined text-2xl">skip_next</span>
           </button>
         </div>
+
+        {!isRunning && (selectedTaskId || selectedTopicId || selectedSubTopicId) && (
+          <button
+            onClick={() => {
+              if (selectedTaskId) toggleTask(selectedTaskId);
+              else if (selectedSubTopicId && selectedTopicId) toggleSubTopicStatus(selectedTopicId, selectedSubTopicId);
+              else if (selectedTopicId) toggleTopicStatus(selectedTopicId);
+              showToast(isLinkedItemCompleted ? "Marked as incomplete" : "Linked item marked as completed!", "success");
+            }}
+            className={clsx(
+              "mt-6 px-6 py-3 rounded-full font-label text-sm uppercase tracking-widest transition-colors flex items-center gap-2 shadow-lg border",
+              isLinkedItemCompleted 
+                ? "bg-surface-container-highest text-on-surface-variant border-outline-variant/30 hover:bg-surface-container-highest/80"
+                : "bg-surface-container-high text-primary border-primary/30 hover:bg-primary/10"
+            )}
+          >
+            <span className="material-symbols-outlined text-lg">
+              {isLinkedItemCompleted ? 'undo' : 'check_circle'}
+            </span>
+            {isLinkedItemCompleted ? 'Mark Incomplete' : 'Completed this task'}
+          </button>
+        )}
       </main>
       
       <div className="p-6 pb-24 relative z-10">
@@ -566,11 +704,7 @@ export default function Timer() {
               {sounds.map(sound => (
                 <button
                   key={sound.id}
-                  onClick={() => {
-                    setSelectedSound(sound);
-                    setShowSoundDropdown(false);
-                    setIsPlayingAudio(true);
-                  }}
+                  onClick={() => changeSound(sound)}
                   className="w-full text-left px-4 py-3 hover:bg-surface-container-highest transition-colors flex items-center gap-3"
                 >
                   <span className="material-symbols-outlined text-tertiary text-sm">{sound.icon}</span>
@@ -584,7 +718,7 @@ export default function Timer() {
           )}
 
           <button 
-            onClick={() => setIsPlayingAudio(!isPlayingAudio)}
+            onClick={toggleAudio}
             className={clsx(
               "w-8 h-8 rounded-full flex items-center justify-center transition-colors shrink-0",
               isPlayingAudio ? "bg-tertiary text-on-tertiary" : "bg-surface-container-highest text-on-surface"

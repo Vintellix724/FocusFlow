@@ -6,7 +6,7 @@ import { auth } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell
+  PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
 
 type Timeframe = 'daily' | 'weekly' | 'monthly' | 'total';
@@ -221,23 +221,28 @@ export default function Analytics() {
     }
 
     // Subject Breakdown
-    const subjectMap: Record<string, number> = {};
+    const subjectMap: Record<string, { timeSpent: number, targetMinutes: number }> = {};
     let totalSubjectMins = 0;
     
     subjects.forEach(s => {
-      subjectMap[s.name] = s.timeSpent || 0;
+      subjectMap[s.name] = {
+        timeSpent: s.timeSpent || 0,
+        targetMinutes: s.targetMinutes || 0
+      };
       totalSubjectMins += s.timeSpent || 0;
     });
 
     const COLORS = ['#7c3aed', '#db2777', '#0284c7', '#ea580c', '#16a34a', '#9333ea'];
     const subjectsList = Object.entries(subjectMap)
-      .filter(([_, mins]) => mins > 0)
-      .map(([subject, mins], index) => {
-        const hours = Number((mins / 60).toFixed(1));
-        const percentage = totalSubjectMins > 0 ? Math.round((mins / totalSubjectMins) * 100) : 0;
+      .filter(([_, data]) => data.timeSpent > 0 || data.targetMinutes > 0)
+      .map(([subject, data], index) => {
+        const hours = Number((data.timeSpent / 60).toFixed(1));
+        const targetHours = Number((data.targetMinutes / 60).toFixed(1));
+        const percentage = totalSubjectMins > 0 ? Math.round((data.timeSpent / totalSubjectMins) * 100) : 0;
         return {
           name: subject,
           value: hours,
+          targetValue: targetHours,
           percentage,
           color: COLORS[index % COLORS.length]
         };
@@ -269,6 +274,45 @@ export default function Analytics() {
       }
     }
 
+    // --- ADVANCED ANALYTICS ---
+    // 1. Heatmap Data (Last 90 Days)
+    const heatmapData = Array.from({ length: 90 }).map((_, i) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() - (89 - i));
+      const dateStr = d.toISOString().split('T')[0];
+      return {
+        date: dateStr,
+        count: focusHistory[dateStr] || 0
+      };
+    });
+
+    // 2. Task Completion Rate
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter(t => t.completed).length;
+    const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+    // 3. Most Productive Day
+    const dayStats = [0,0,0,0,0,0,0];
+    const dayCounts = [0,0,0,0,0,0,0];
+    Object.entries(focusHistory).forEach(([dateStr, mins]) => {
+      const d = new Date(dateStr);
+      const day = d.getDay();
+      dayStats[day] += mins;
+      dayCounts[day] += 1;
+    });
+    const dayAverages = dayStats.map((total, i) => dayCounts[i] > 0 ? total / dayCounts[i] : 0);
+    const maxAvg = Math.max(...dayAverages);
+    const bestDayIndex = dayAverages.indexOf(maxAvg);
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const bestDay = maxAvg > 0 ? daysOfWeek[bestDayIndex] : 'N/A';
+
+    // 4. Radar Chart Data
+    const radarData = Object.entries(subjectMap).map(([subject, data]) => ({
+      subject: subject.length > 10 ? subject.substring(0, 10) + '...' : subject,
+      hours: Number((data.timeSpent / 60).toFixed(1)),
+      fullMark: Math.max(Number((data.targetMinutes / 60).toFixed(1)), Number((data.timeSpent / 60).toFixed(1)), 1)
+    }));
+
     return {
       graphData,
       totalHours,
@@ -277,7 +321,11 @@ export default function Analytics() {
       subjectsList,
       insight,
       insightIcon,
-      insightColor
+      insightColor,
+      heatmapData,
+      completionRate,
+      bestDay,
+      radarData
     };
   }, [timeframe, focusHistory, tasks, subjects]);
 
@@ -383,6 +431,10 @@ export default function Analytics() {
                   className="w-full h-full object-cover" 
                   src={user?.photoURL || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + (user?.name || 'Student')}
                   referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    (e.target as HTMLImageElement).parentElement!.innerHTML = `<div class="w-full h-full flex items-center justify-center bg-primary text-on-primary font-bold text-xl">${(user?.name || 'S').charAt(0).toUpperCase()}</div>`;
+                  }}
                 />
               </div>
               <button 
@@ -708,7 +760,7 @@ export default function Analytics() {
                       <span className="font-syne font-bold text-sm">{item.name}</span>
                     </div>
                     <div className="flex items-baseline gap-2">
-                      <span className="font-mono font-bold text-sm">{item.value.toFixed(1)}h</span>
+                      <span className="font-mono font-bold text-sm">{item.value.toFixed(1)}h / {item.targetValue.toFixed(1)}h</span>
                       <span className="font-mono text-xs text-on-surface-variant w-10 text-right">{item.percentage}%</span>
                     </div>
                   </div>
@@ -726,6 +778,99 @@ export default function Analytics() {
                 <p className="text-sm text-on-surface-variant text-center py-8">Complete some tasks to see your breakdown.</p>
               )}
             </div>
+          </div>
+        </section>
+
+        {/* --- ADVANCED ANALYTICS SECTIONS --- */}
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Advanced Insights Cards */}
+          <div className="space-y-6">
+            <div className="bg-surface-container-high rounded-3xl p-6 border border-outline-variant/10 shadow-sm flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-primary text-3xl">task_alt</span>
+              </div>
+              <div>
+                <h3 className="font-label text-xs uppercase tracking-widest text-on-surface-variant mb-1">Task Completion Rate</h3>
+                <div className="flex items-baseline gap-1">
+                  <span className="font-mono font-bold text-3xl text-on-surface">{aggregatedData.completionRate}</span>
+                  <span className="font-mono text-sm text-on-surface-variant">%</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-surface-container-high rounded-3xl p-6 border border-outline-variant/10 shadow-sm flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-tertiary/10 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-tertiary text-3xl">event_available</span>
+              </div>
+              <div>
+                <h3 className="font-label text-xs uppercase tracking-widest text-on-surface-variant mb-1">Most Productive Day</h3>
+                <div className="flex items-baseline gap-1">
+                  <span className="font-syne font-bold text-2xl text-on-surface">{aggregatedData.bestDay}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Radar Chart */}
+          <div className="bg-surface-container-high rounded-3xl p-6 border border-outline-variant/10 shadow-sm flex flex-col items-center justify-center">
+            <h3 className="font-label text-xs uppercase tracking-widest text-on-surface-variant mb-2 self-start">Subject Mastery (Hours)</h3>
+            {aggregatedData.radarData.length >= 3 ? (
+              <div className="w-full h-[250px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart cx="50%" cy="50%" outerRadius="70%" data={aggregatedData.radarData}>
+                    <PolarGrid stroke="#334155" />
+                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 10, fontFamily: 'JetBrains Mono' }} />
+                    <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={false} axisLine={false} />
+                    <Radar name="Hours" dataKey="hours" stroke="#7c3aed" fill="#7c3aed" fillOpacity={0.5} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px' }}
+                      itemStyle={{ color: '#f8fafc', fontFamily: 'JetBrains Mono' }}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-[250px] flex items-center justify-center text-center px-4">
+                <p className="text-sm text-on-surface-variant">Add at least 3 subjects with tracked time to see your mastery radar.</p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* 90-Day Activity Heatmap */}
+        <section className="bg-surface-container-high rounded-3xl p-6 border border-outline-variant/10 shadow-sm">
+          <div className="flex items-center gap-2 mb-6">
+            <span className="material-symbols-outlined text-on-surface-variant">grid_on</span>
+            <h3 className="font-label text-xs uppercase tracking-widest text-on-surface-variant">90-Day Activity Map</h3>
+          </div>
+          <div className="flex flex-wrap gap-1.5 justify-center sm:justify-start">
+            {aggregatedData.heatmapData.map((day, i) => {
+              // Determine color intensity based on minutes
+              let bgColor = "bg-surface-container-highest";
+              if (day.count > 0 && day.count <= 30) bgColor = "bg-primary/30";
+              else if (day.count > 30 && day.count <= 60) bgColor = "bg-primary/50";
+              else if (day.count > 60 && day.count <= 120) bgColor = "bg-primary/70";
+              else if (day.count > 120) bgColor = "bg-primary";
+
+              return (
+                <div 
+                  key={i} 
+                  className={clsx("w-3 h-3 sm:w-4 sm:h-4 rounded-sm transition-colors cursor-pointer hover:ring-2 hover:ring-on-surface/50", bgColor)}
+                  title={`${day.date}: ${Math.round(day.count)} mins`}
+                />
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-end gap-2 mt-4 text-[10px] font-label uppercase tracking-widest text-on-surface-variant">
+            <span>Less</span>
+            <div className="flex gap-1">
+              <div className="w-3 h-3 rounded-sm bg-surface-container-highest"></div>
+              <div className="w-3 h-3 rounded-sm bg-primary/30"></div>
+              <div className="w-3 h-3 rounded-sm bg-primary/50"></div>
+              <div className="w-3 h-3 rounded-sm bg-primary/70"></div>
+              <div className="w-3 h-3 rounded-sm bg-primary"></div>
+            </div>
+            <span>More</span>
           </div>
         </section>
 

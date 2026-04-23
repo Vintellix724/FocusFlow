@@ -29,6 +29,21 @@ export default function About() {
       description: "Schedule your day effectively. Add specific tasks to your calendar, set priorities (Q1-Q4), and establish a daily study routine. This helps you build consistency and avoid last-minute cramming."
     },
     {
+      title: "Mock Tests & Analytics",
+      icon: "quiz",
+      description: "Keep track of your mock tests. Upload question papers and answer keys, record your marks, and analyze your performance with detailed charts. Compare your scores across different coaching institutes and share your analytics with AI for personalized feedback."
+    },
+    {
+      title: "Study Resources",
+      icon: "smart_display",
+      description: "Organize your digital study materials. Save your favorite YouTube channels, Telegram groups, and Study Apps in one place so you don't get distracted searching for them."
+    },
+    {
+      title: "Offline Support",
+      icon: "wifi_off",
+      description: "Study without distractions. You can turn off your internet or lock your screen while the timer is running. Your focus time will be accurately counted and synced to your profile as soon as you come back online."
+    },
+    {
       title: "Live Study Room",
       icon: "groups",
       description: "Study alongside others in real-time. Seeing peers focusing can boost your own motivation and accountability. Start a timer session to automatically appear in the live room."
