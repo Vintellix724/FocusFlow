@@ -315,7 +315,7 @@ export default function Home() {
           ) : (
             <div 
               onClick={() => inspirationInputRef.current?.click()}
-              className="h-48 w-full flex flex-col items-center justify-center cursor-pointer hover:bg-surface-container-highest/50 transition-all border-2 border-dashed border-outline-variant/50 m-4 rounded-2xl"
+              className="h-48 flex flex-col items-center justify-center cursor-pointer hover:bg-surface-container-highest/50 transition-all border-2 border-dashed border-outline-variant/30 hover:border-primary/50 m-4 rounded-2xl text-center px-4"
             >
               <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
                 <span className="material-symbols-outlined text-2xl text-primary">add_photo_alternate</span>
